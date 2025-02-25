@@ -1,4 +1,4 @@
-# GPT Explaination Generator for Anki
+# GPT Explainer for Anki
 
 This addon generates explainations for Japanese language learning cards using OpenAI's GPT-4o.
 
@@ -32,8 +32,6 @@ To use the audio generation feature:
 4. The addon will automatically detect if VOICEVOX is running and use it for audio generation
 
 If VOICEVOX is not running, the addon will display a message and continue without generating audio.
-
-## Usage
 
 ## Requirements
 
