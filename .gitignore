@@ -14,6 +14,7 @@ build/
 error_log.txt
 crash_log.txt
 process_debug.txt
+debug_log.txt
 
 # Environment
 .env
