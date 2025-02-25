@@ -166,21 +166,35 @@ def check_voicevox_running():
     """
     try:
         debug_log("Checking if VOICEVOX is running...")
-        response = requests.get("http://localhost:50021/version", timeout=2)
-        if response.status_code == 200:
-            debug_log(f"VOICEVOX is running, version: {response.text}")
-            return True
-        else:
-            debug_log(f"VOICEVOX returned non-200 status code: {response.status_code}")
-            return False
-    except requests.exceptions.ConnectionError:
-        debug_log("VOICEVOX connection error - server not running")
-        return False
-    except requests.exceptions.Timeout:
-        debug_log("VOICEVOX connection timeout")
+        
+        # Try multiple URLs to check if VOICEVOX is running
+        test_urls = [
+            "http://localhost:50021/version",  # Standard URL
+            "http://127.0.0.1:50021/version",  # Alternative localhost
+            "http://0.0.0.0:50021/version"     # Another alternative
+        ]
+        
+        for url in test_urls:
+            try:
+                debug_log(f"Trying to connect to VOICEVOX at {url}")
+                response = requests.get(url, timeout=1)
+                if response.status_code == 200:
+                    debug_log(f"VOICEVOX is running at {url}, version: {response.text}")
+                    return True
+                else:
+                    debug_log(f"VOICEVOX at {url} returned non-200 status code: {response.status_code}")
+            except requests.exceptions.ConnectionError:
+                debug_log(f"VOICEVOX connection error at {url} - server not running")
+            except requests.exceptions.Timeout:
+                debug_log(f"VOICEVOX connection timeout at {url}")
+            except Exception as e:
+                debug_log(f"Error checking VOICEVOX at {url}: {str(e)}")
+        
+        # If we get here, all URLs failed
+        debug_log("All VOICEVOX connection attempts failed")
         return False
     except Exception as e:
-        debug_log(f"Error checking VOICEVOX: {str(e)}")
+        debug_log(f"Unexpected error in check_voicevox_running: {str(e)}")
         return False
 
 def get_voicevox_install_instructions():
@@ -192,13 +206,13 @@ def get_voicevox_install_instructions():
     """
     system = platform.system()
     if system == "Windows":
-        return "Download VOICEVOX from https://voicevox.hiroshiba.jp/ and run it before generating audio."
+        return "Download VOICEVOX from <a href='https://voicevox.hiroshiba.jp/'>https://voicevox.hiroshiba.jp/</a> and run it before generating audio."
     elif system == "Darwin":  # macOS
-        return "Download VOICEVOX from https://voicevox.hiroshiba.jp/ and run it before generating audio."
+        return "Download VOICEVOX from <a href='https://voicevox.hiroshiba.jp/'>https://voicevox.hiroshiba.jp/</a> and run it before generating audio. Make sure the VOICEVOX app is running and the API server is enabled in the settings."
     elif system == "Linux":
-        return "Install VOICEVOX using Docker or from source: https://github.com/VOICEVOX/voicevox_engine"
+        return "Install VOICEVOX using Docker or from source: <a href='https://github.com/VOICEVOX/voicevox_engine'>https://github.com/VOICEVOX/voicevox_engine</a>"
     else:
-        return "Visit https://voicevox.hiroshiba.jp/ to download VOICEVOX for your platform."
+        return "Visit <a href='https://voicevox.hiroshiba.jp/'>https://voicevox.hiroshiba.jp/</a> to download VOICEVOX for your platform."
 
 def generate_audio(api_key, text):
     """
@@ -226,14 +240,46 @@ def generate_audio(api_key, text):
         text = text[:max_text_length] + "..."
     
     try:
-        # Check if VOICEVOX is running
-        if not check_voicevox_running():
-            debug_log("VOICEVOX server is not running. Please start VOICEVOX and try again.")
+        # Check if VOICEVOX is running with a very short timeout
+        debug_log("Doing a quick check if VOICEVOX is accessible")
+        try:
+            response = requests.get("http://localhost:50021/version", timeout=1)
+            if response.status_code != 200:
+                debug_log(f"VOICEVOX not accessible: status code {response.status_code}")
+                return None
+            debug_log(f"VOICEVOX is accessible, version: {response.text}")
+        except Exception as e:
+            debug_log(f"VOICEVOX initial check failed: {str(e)}")
             return None
         
         # Get the media directory path
-        media_dir = os.path.join(mw.pm.profileFolder(), "collection.media")
-        debug_log(f"Media directory: {media_dir}")
+        try:
+            media_dir = os.path.join(mw.pm.profileFolder(), "collection.media")
+            debug_log(f"Media directory: {media_dir}")
+            
+            # Check if media directory exists and is writable
+            if not os.path.exists(media_dir):
+                debug_log(f"Media directory does not exist: {media_dir}")
+                try:
+                    os.makedirs(media_dir, exist_ok=True)
+                    debug_log(f"Created media directory: {media_dir}")
+                except Exception as e:
+                    debug_log(f"Failed to create media directory: {str(e)}")
+                    return None
+                    
+            # Verify directory is writable with a test file
+            test_file_path = os.path.join(media_dir, "voicevox_test.tmp")
+            try:
+                with open(test_file_path, 'w') as f:
+                    f.write("test")
+                os.remove(test_file_path)
+                debug_log("Media directory is writable")
+            except Exception as e:
+                debug_log(f"Media directory is not writable: {str(e)}")
+                return None
+        except Exception as e:
+            debug_log(f"Error accessing media directory: {str(e)}")
+            return None
         
         # Create a unique filename based on content hash and timestamp
         file_hash = base64.b16encode(text.encode()).decode()[:16].lower()
@@ -243,18 +289,19 @@ def generate_audio(api_key, text):
         debug_log(f"Target file path: {file_path}")
 
         # Speaker ID
-        speaker_id = 11
+        speaker_id = 11  # Adjust if needed
 
         # Set timeout for requests to prevent hanging
-        timeout_seconds = 30
+        timeout_seconds = 10  # Shorter timeout
         
         # 1. Create audio query
         debug_log("Creating audio query")
-        query_params = {'text': text, 'speaker': speaker_id}  # Use speaker 11 for male voice
+        query_params = {'text': text, 'speaker': speaker_id}
         try:
             debug_log(f"Sending audio query request with text: {text[:50]}...")
             query_response = requests.post('http://localhost:50021/audio_query', params=query_params, timeout=timeout_seconds)
             debug_log(f"Audio query response status: {query_response.status_code}")
+            debug_log(f"Audio query response content type: {query_response.headers.get('Content-Type', 'unknown')}")
         except requests.exceptions.Timeout:
             debug_log("Timeout while creating audio query")
             return None
@@ -264,12 +311,14 @@ def generate_audio(api_key, text):
             return None
         
         if query_response.status_code != 200:
-            debug_log(f"Error in audio_query: {query_response.text}")
+            debug_log(f"Error in audio_query: {query_response.text[:200]}")
             return None
         
         try:
+            query_content = query_response.text
+            debug_log(f"Audio query response content (first 50 chars): {query_content[:50]}")
             query = query_response.json()
-            debug_log("Successfully parsed audio query response")
+            debug_log("Successfully parsed audio query JSON response")
         except Exception as e:
             debug_log(f"Error parsing audio query response: {str(e)}")
             debug_log(f"Response content: {query_response.text[:200]}...")
@@ -282,6 +331,8 @@ def generate_audio(api_key, text):
             debug_log("Sending synthesis request...")
             synthesis_response = requests.post('http://localhost:50021/synthesis', params=synthesis_params, json=query, timeout=timeout_seconds)
             debug_log(f"Synthesis response status: {synthesis_response.status_code}")
+            debug_log(f"Synthesis response content type: {synthesis_response.headers.get('Content-Type', 'unknown')}")
+            debug_log(f"Synthesis response content length: {len(synthesis_response.content)}")
         except requests.exceptions.Timeout:
             debug_log("Timeout while generating audio data")
             return None
@@ -291,7 +342,12 @@ def generate_audio(api_key, text):
             return None
         
         if synthesis_response.status_code != 200:
-            debug_log(f"Error in synthesis: {synthesis_response.text}")
+            debug_log(f"Error in synthesis: {synthesis_response.text[:200]}")
+            return None
+            
+        if len(synthesis_response.content) < 100:  # Check if response is too small
+            debug_log(f"Synthesis response too small, might not be audio: {len(synthesis_response.content)} bytes")
+            debug_log(f"Response content (first 100 bytes): {synthesis_response.content[:100]}")
             return None
         
         # Save the audio file
@@ -299,14 +355,21 @@ def generate_audio(api_key, text):
         try:
             with open(file_path, 'wb') as f:
                 f.write(synthesis_response.content)
+                debug_log(f"Wrote {len(synthesis_response.content)} bytes to file")
             
             # Verify the file was written correctly
-            if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                debug_log(f"File successfully written, size: {os.path.getsize(file_path)}")
+            if os.path.exists(file_path):
+                file_size = os.path.getsize(file_path)
+                debug_log(f"File successfully written, size: {file_size} bytes")
+                
+                if file_size < 100:  # Check if file is too small
+                    debug_log("File is too small, might not be valid audio")
+                    return None
+                    
                 debug_log("=== AUDIO GENERATION COMPLETE ===")
                 return file_path
             else:
-                debug_log("File is empty or doesn't exist")
+                debug_log("File doesn't exist after writing")
                 return None
         except Exception as e:
             debug_log(f"Error writing audio file: {str(e)}")

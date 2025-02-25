@@ -210,10 +210,21 @@ class ConfigDialog(QDialog):
         explaination_audio_field_layout.addWidget(self.explaination_audio_field_combo)
         layout.addLayout(explaination_audio_field_layout)
         
+        # Field verification message
+        self.field_verification_label = QLabel("")
+        self.field_verification_label.setStyleSheet("color: #FF5555;")  # Red text for warnings
+        layout.addWidget(self.field_verification_label)
+        
         # VOICEVOX notice
         voicevox_status = "Running" if check_voicevox_running() else "Not Running"
-        voicevox_label = QLabel(f"<b>VOICEVOX Status: {voicevox_status}</b>")
+        voicevox_status_color = "green" if check_voicevox_running() else "red"
+        voicevox_label = QLabel(f"<b>VOICEVOX Status: <span style='color: {voicevox_status_color};'>{voicevox_status}</span></b>")
         layout.addWidget(voicevox_label)
+        
+        # Add a button to test VOICEVOX connection
+        voicevox_test_button = QPushButton("Test VOICEVOX Connection")
+        qconnect(voicevox_test_button.clicked, self.test_voicevox_connection)
+        layout.addWidget(voicevox_test_button)
         
         voicevox_instructions = get_voicevox_install_instructions()
         voicevox_notice = QLabel(f"Note: Audio generation requires VOICEVOX to be running. {voicevox_instructions}")
@@ -258,6 +269,29 @@ class ConfigDialog(QDialog):
             combo.addItems(fields)
             if current_text in fields:
                 combo.setCurrentText(current_text)
+        
+        # Verify if selected fields exist in the note type
+        self.verify_fields()
+
+    def verify_fields(self):
+        """Verify if the selected fields exist in the note type and show warnings if not"""
+        note_type = self.note_type_combo.currentText()
+        fields = get_fields_for_note_type(note_type)
+        
+        missing_fields = []
+        
+        # Check audio field specifically since it's critical for audio generation
+        audio_field = self.explaination_audio_field_combo.currentText()
+        if audio_field and audio_field not in fields:
+            missing_fields.append(f"'{audio_field}' (audio)")
+        
+        if missing_fields:
+            warning = f"Warning: The following fields are not in the note type '{note_type}':<br>"
+            warning += "<br>".join(missing_fields)
+            warning += "<br><br>You may need to add these fields to your note type or select different fields."
+            self.field_verification_label.setText(warning)
+        else:
+            self.field_verification_label.setText("")
 
     def load_settings(self):
         load_config()
@@ -303,6 +337,48 @@ class ConfigDialog(QDialog):
         save_config()
         self.accept()
 
+    def test_voicevox_connection(self):
+        """Test the connection to VOICEVOX and show detailed results"""
+        try:
+            # Try to connect to VOICEVOX with more detailed diagnostics
+            is_running = check_voicevox_running()
+            
+            if is_running:
+                # Try to generate a very small test audio to confirm full functionality
+                test_text = "テスト"
+                test_result = generate_audio("", test_text)
+                
+                if test_result:
+                    # Success! Show confirmation message with path to audio file
+                    QMessageBox.information(self, "VOICEVOX Connection Successful", 
+                        f"Successfully connected to VOICEVOX and generated test audio.\n\n"
+                        f"Audio file: {test_result}\n\n"
+                        f"Audio generation should work correctly.")
+                else:
+                    # Connected but couldn't generate audio
+                    QMessageBox.warning(self, "VOICEVOX Partial Connection", 
+                        "Connected to VOICEVOX server, but failed to generate test audio.\n\n"
+                        "Possible issues:\n"
+                        "- VOICEVOX server is running but not responding to synthesis requests\n"
+                        "- Permission issues with the media directory\n"
+                        "- Audio generation timeout\n\n"
+                        "Please check the debug logs for more details.")
+            else:
+                # Couldn't connect to VOICEVOX
+                QMessageBox.critical(self, "VOICEVOX Connection Failed", 
+                    "Failed to connect to VOICEVOX server.\n\n"
+                    "Please ensure VOICEVOX is running and the API server is enabled.\n\n"
+                    "Common issues:\n"
+                    "- VOICEVOX application is not started\n"
+                    "- API server is disabled in VOICEVOX settings\n"
+                    "- VOICEVOX is using a different port (default is 50021)\n"
+                    "- Firewall is blocking connections to VOICEVOX\n\n" +
+                    get_voicevox_install_instructions())
+        except Exception as e:
+            # Error during test
+            QMessageBox.critical(self, "Test Error", 
+                f"An error occurred while testing VOICEVOX connection:\n\n{str(e)}")
+
 # Process a single note with debug mode
 def process_note_debug(note, override_existing=True, progress_callback=None):
     addon_dir = os.path.dirname(os.path.abspath(__file__))
@@ -343,6 +419,7 @@ def process_note_debug(note, override_existing=True, progress_callback=None):
         if not override_existing:
             debug_write("Checking if content already exists")
             explaination_exists = CONFIG["explaination_field"] in note and note[CONFIG["explaination_field"]].strip()
+            # Check if audio field exists in the note before checking its content
             audio_exists = CONFIG["explaination_audio_field"] in note and note[CONFIG["explaination_audio_field"]].strip()
             
             debug_write(f"Explaination exists: {explaination_exists}")
@@ -409,9 +486,11 @@ def process_note_debug(note, override_existing=True, progress_callback=None):
         # Generate audio with VOICEVOX if available
         debug_write("Checking if audio field is configured")
         voicevox_running = False  # Default value
+        
         audio_path_result = [None]  # Use a list to store the result
         
-        if CONFIG["explaination_audio_field"] in note:
+        # First check if the audio field actually exists in the note
+        if CONFIG["explaination_audio_field"] and CONFIG["explaination_audio_field"] in note:
             debug_write(f"Audio field found: {CONFIG['explaination_audio_field']}")
             debug_write("Checking VOICEVOX status")
             voicevox_running = check_voicevox_running()
@@ -430,53 +509,77 @@ def process_note_debug(note, override_existing=True, progress_callback=None):
                         start_time = time.time()
                         debug_write(f"Generating audio for text: {explaination[:50]}...")
                         
-                        # Try to generate audio with a timeout
-                        audio_generation_thread = [None]
-                        audio_result = [None]
-                        audio_done = [False]
+                        # Try to generate audio directly first, without threading
+                        debug_write("Attempting direct audio generation first")
+                        try:
+                            audio_path = generate_audio(CONFIG["api_key"], explaination)
+                            if audio_path:
+                                debug_write(f"Direct audio generation successful: {audio_path}")
+                                audio_path_result[0] = audio_path
+                            else:
+                                debug_write("Direct audio generation failed, will try with threading")
+                        except Exception as e:
+                            debug_write(f"Error in direct audio generation: {str(e)}")
+                            debug_write("Will try with threading approach")
                         
-                        def generate_audio_thread():
-                            try:
-                                result = generate_audio(CONFIG["api_key"], explaination)
-                                audio_result[0] = result
-                            except Exception as e:
-                                debug_write(f"Exception in audio generation thread: {str(e)}")
-                            finally:
-                                audio_done[0] = True
-                        
-                        # Start audio generation in a thread
-                        audio_thread = threading.Thread(target=generate_audio_thread)
-                        audio_thread.daemon = True  # Allow thread to be terminated when process exits
-                        audio_generation_thread[0] = audio_thread
-                        audio_thread.start()
-                        
-                        # Wait for audio generation to complete with a timeout
-                        audio_timeout = 30  # seconds
-                        wait_interval = 0.5  # Check every half second
-                        wait_time = 0
-                        
-                        while not audio_done[0] and wait_time < audio_timeout:
-                            time.sleep(wait_interval)
-                            wait_time += wait_interval
-                            debug_write(f"Waiting for audio generation... {wait_time:.1f}s elapsed")
-                        
-                        # Get the result or handle timeout
-                        if audio_done[0]:
-                            audio_path = audio_result[0]
-                            audio_path_result[0] = audio_path  # Store in our list
-                            debug_write(f"Audio generation completed in {wait_time:.1f} seconds")
-                        else:
-                            debug_write(f"Audio generation timed out after {audio_timeout} seconds")
-                            audio_path = None
+                        # If direct generation failed, try with threading
+                        if not audio_path_result[0]:
+                            # Try to generate audio with a timeout
+                            audio_generation_thread = [None]
+                            audio_result = [None]
+                            audio_done = [False]
+                            
+                            def generate_audio_thread():
+                                try:
+                                    debug_write("Thread started for audio generation")
+                                    result = generate_audio(CONFIG["api_key"], explaination)
+                                    debug_write(f"Thread result: {result}")
+                                    audio_result[0] = result
+                                except Exception as e:
+                                    debug_write(f"Exception in audio generation thread: {str(e)}")
+                                    debug_write(f"Thread stack trace: {traceback.format_exc()}")
+                                finally:
+                                    debug_write("Audio generation thread finished")
+                                    audio_done[0] = True
+                            
+                            # Start audio generation in a thread
+                            debug_write("Starting audio generation thread")
+                            audio_thread = threading.Thread(target=generate_audio_thread)
+                            audio_thread.daemon = True  # Allow thread to be terminated when process exits
+                            audio_generation_thread[0] = audio_thread
+                            audio_thread.start()
+                            
+                            # Wait for audio generation to complete with a timeout
+                            audio_timeout = 20  # seconds - reduced timeout
+                            wait_interval = 0.5  # Check every half second
+                            wait_time = 0
+                            
+                            debug_write(f"Waiting for audio generation with {audio_timeout}s timeout")
+                            while not audio_done[0] and wait_time < audio_timeout:
+                                time.sleep(wait_interval)
+                                wait_time += wait_interval
+                                debug_write(f"Waiting for audio generation... {wait_time:.1f}s elapsed")
+                            
+                            # Get the result or handle timeout
+                            if audio_done[0]:
+                                audio_path = audio_result[0]
+                                audio_path_result[0] = audio_path  # Store in our list
+                                debug_write(f"Audio generation thread completed in {wait_time:.1f} seconds")
+                            else:
+                                debug_write(f"Audio generation thread timed out after {audio_timeout} seconds")
+                                # Try to interrupt the thread (though this is not reliable in Python)
+                                audio_path = None
                         
                         elapsed_time = time.time() - start_time
-                        debug_write(f"Audio generation process took {elapsed_time:.2f} seconds")
+                        debug_write(f"Audio generation process took {elapsed_time:.2f} seconds total")
                         
-                        if audio_path:
+                        if audio_path_result[0]:
                             # Get just the filename from the path
-                            audio_filename = os.path.basename(audio_path)
-                            debug_write(f"Audio generation returned: {audio_path}")
-                            debug_write(f"Audio file exists, basename: {audio_filename}")
+                            audio_filename = os.path.basename(audio_path_result[0])
+                            debug_write(f"Audio generation returned: {audio_path_result[0]}")
+                            debug_write(f"Audio file exists: {os.path.exists(audio_path_result[0])}")
+                            debug_write(f"Audio file size: {os.path.getsize(audio_path_result[0]) if os.path.exists(audio_path_result[0]) else 'file not found'}")
+                            debug_write(f"Audio file basename: {audio_filename}")
                             
                             # Save the audio reference to the note
                             debug_write("Saving audio reference to note")
