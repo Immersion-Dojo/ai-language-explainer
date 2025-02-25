@@ -1,0 +1,10 @@
+{
+    "name": "GPT Explanation Generator",
+    "package": "gpt_explanation",
+    "ankiweb_id": "",
+    "author": "Ray",
+    "version": "1.3.4",
+    "homepage": "",
+    "conflicts": [],
+    "mod": 0
+}

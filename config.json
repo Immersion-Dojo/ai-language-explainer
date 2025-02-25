@@ -1,0 +1,11 @@
+{
+    "note_type": "Ray's Sentence Mining",
+    "word_field": "wordForm",
+    "sentence_field": "sentence",
+    "definition_field": "definition",
+    "picture_field": "picture",
+    "explanation_field": "explanation",
+    "explanation_audio_field": "explanationAudio",
+    "api_key": "",
+    "gpt_prompt": "Please write an explanation of the word '{word}' in the context of the original sentence: '{sentence}'. The definition of the word is: '{definition}'. Create an explanation that helps a Japanese language beginner understand how this word is used in this context and its wider meaning if necessary. Don't use any English, only use simpler Japanese."
+}
