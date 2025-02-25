@@ -5,11 +5,9 @@ This addon generates explainations for Japanese language learning cards using Op
 ## Features
 
 - Automatically generates explainations for words based on their definition, example sentence, and context
-- Analyzes images in your cards to provide more contextual explainations
 - Creates high-quality audio recordings of the explainations using VOICEVOX (requires VOICEVOX to be running)
 - Works with any note type (configurable fields)
 - Adds a button during review to generate explainations on demand
-- Option to preserve existing explainations and audio (avoid overriding)
 
 ## Setup
 
