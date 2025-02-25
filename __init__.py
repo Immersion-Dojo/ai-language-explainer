@@ -1,7 +1,7 @@
 # File: __init__.py
 from aqt import mw, gui_hooks
 from aqt.utils import qconnect, showInfo, tooltip, askUser
-from aqt.qt import QAction, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QLineEdit, QProgressDialog, QCheckBox, QMessageBox, QApplication, Qt
+from aqt.qt import QAction, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QLineEdit, QProgressDialog, QCheckBox, QMessageBox, QApplication, Qt, QTimer
 from anki.notes import Note
 import os
 import json
@@ -68,7 +68,7 @@ def check_dependencies():
 check_dependencies()
 
 # Now import the module that requires these dependencies
-from .api_handler import process_with_openai, generate_audio, check_voicevox_running
+from .api_handler import process_with_openai, generate_audio, check_voicevox_running, get_voicevox_install_instructions
 
 # Set up logging
 def log_error(message, error=None):
@@ -105,6 +105,16 @@ def load_config():
     config = mw.addonManager.getConfig(__name__)
     if config:
         CONFIG.update(config)
+        
+        # Handle backward compatibility and spelling corrections
+        # If explanation fields are set in config but not explaination fields, copy them
+        if "explanation_field" in config and config["explanation_field"] and not CONFIG["explaination_field"]:
+            CONFIG["explaination_field"] = config["explanation_field"]
+            log_error(f"Using explanation_field value for explaination_field: {CONFIG['explaination_field']}")
+            
+        if "explanation_audio_field" in config and config["explanation_audio_field"] and not CONFIG["explaination_audio_field"]:
+            CONFIG["explaination_audio_field"] = config["explanation_audio_field"]
+            log_error(f"Using explanation_audio_field value for explaination_audio_field: {CONFIG['explaination_audio_field']}")
 
 # Save configuration
 def save_config():
@@ -205,7 +215,9 @@ class ConfigDialog(QDialog):
         voicevox_label = QLabel(f"<b>VOICEVOX Status: {voicevox_status}</b>")
         layout.addWidget(voicevox_label)
         
-        voicevox_notice = QLabel("Note: Audio generation requires VOICEVOX to be running. Please download and start VOICEVOX before generating audio.")
+        voicevox_instructions = get_voicevox_install_instructions()
+        voicevox_notice = QLabel(f"Note: Audio generation requires VOICEVOX to be running. {voicevox_instructions}")
+        voicevox_notice.setWordWrap(True)
         layout.addWidget(voicevox_notice)
         
         # API Key
@@ -383,9 +395,29 @@ def process_note_debug(note, override_existing=True, progress_callback=None):
                     log_error(f"Error setting explaination field: {CONFIG['explaination_field']}", e)
                     return False, f"Error saving explaination to note: {str(e)}"
         
+        # Also try the "explanation" field (with correct spelling) if it exists
+        if "explanation" in note and CONFIG["explaination_field"] != "explanation":
+            debug_write("Also saving to 'explanation' field (correct spelling)")
+            if override_existing or not note["explanation"].strip():
+                try:
+                    note["explanation"] = explaination
+                    debug_write("Explanation saved to note (correct spelling field)")
+                except Exception as e:
+                    debug_write(f"Error setting explanation field (correct spelling): {str(e)}")
+                    # Continue even if this fails
+        
         # Generate audio with VOICEVOX if available
+        debug_write("Checking if audio field is configured")
+        voicevox_running = False  # Default value
+        audio_path_result = [None]  # Use a list to store the result
+        
         if CONFIG["explaination_audio_field"] in note:
-            if check_voicevox_running():
+            debug_write(f"Audio field found: {CONFIG['explaination_audio_field']}")
+            debug_write("Checking VOICEVOX status")
+            voicevox_running = check_voicevox_running()
+            debug_write(f"VOICEVOX running: {voicevox_running}")
+            
+            if voicevox_running:
                 debug_write(f"Processing audio for field: {CONFIG['explaination_audio_field']}")
                 if override_existing or not note[CONFIG["explaination_audio_field"]].strip():
                     try:
@@ -394,7 +426,51 @@ def process_note_debug(note, override_existing=True, progress_callback=None):
                         if progress_callback:
                             progress_callback("Generating audio with VOICEVOX...")
                             
-                        audio_path = generate_audio(CONFIG["api_key"], explaination)
+                        # Set a timeout for audio generation
+                        start_time = time.time()
+                        debug_write(f"Generating audio for text: {explaination[:50]}...")
+                        
+                        # Try to generate audio with a timeout
+                        audio_generation_thread = [None]
+                        audio_result = [None]
+                        audio_done = [False]
+                        
+                        def generate_audio_thread():
+                            try:
+                                result = generate_audio(CONFIG["api_key"], explaination)
+                                audio_result[0] = result
+                            except Exception as e:
+                                debug_write(f"Exception in audio generation thread: {str(e)}")
+                            finally:
+                                audio_done[0] = True
+                        
+                        # Start audio generation in a thread
+                        audio_thread = threading.Thread(target=generate_audio_thread)
+                        audio_thread.daemon = True  # Allow thread to be terminated when process exits
+                        audio_generation_thread[0] = audio_thread
+                        audio_thread.start()
+                        
+                        # Wait for audio generation to complete with a timeout
+                        audio_timeout = 30  # seconds
+                        wait_interval = 0.5  # Check every half second
+                        wait_time = 0
+                        
+                        while not audio_done[0] and wait_time < audio_timeout:
+                            time.sleep(wait_interval)
+                            wait_time += wait_interval
+                            debug_write(f"Waiting for audio generation... {wait_time:.1f}s elapsed")
+                        
+                        # Get the result or handle timeout
+                        if audio_done[0]:
+                            audio_path = audio_result[0]
+                            audio_path_result[0] = audio_path  # Store in our list
+                            debug_write(f"Audio generation completed in {wait_time:.1f} seconds")
+                        else:
+                            debug_write(f"Audio generation timed out after {audio_timeout} seconds")
+                            audio_path = None
+                        
+                        elapsed_time = time.time() - start_time
+                        debug_write(f"Audio generation process took {elapsed_time:.2f} seconds")
                         
                         if audio_path:
                             # Get just the filename from the path
@@ -410,15 +486,17 @@ def process_note_debug(note, override_existing=True, progress_callback=None):
                             if progress_callback:
                                 progress_callback("Audio generated and saved to note")
                         else:
-                            debug_write("Audio generation failed, setting placeholder text")
-                            note[CONFIG["explaination_audio_field"]] = "[Audio generation failed]"
+                            debug_write("Audio generation failed or timed out, setting placeholder text")
+                            note[CONFIG["explaination_audio_field"]] = "[Audio generation failed or timed out]"
                             
                             if progress_callback:
                                 progress_callback("Audio generation failed")
                     except Exception as e:
                         debug_write(f"Error in audio generation: {str(e)}")
+                        debug_write(f"Stack trace: {traceback.format_exc()}")
                         log_error("Error in audio generation", e)
                         # Continue even if audio generation fails
+                        note[CONFIG["explaination_audio_field"]] = "[Error generating audio]"
                         
                         if progress_callback:
                             progress_callback(f"Error generating audio: {str(e)}")
@@ -434,6 +512,25 @@ def process_note_debug(note, override_existing=True, progress_callback=None):
                     except Exception as e:
                         debug_write(f"Error setting audio field: {str(e)}")
                         # Continue even if this fails
+        else:
+            debug_write(f"Audio field not found in note: {CONFIG['explaination_audio_field']}")
+            
+        # Also try the "explanationAudio" field (with correct spelling) if it exists
+        if "explanationAudio" in note and CONFIG["explaination_audio_field"] != "explanationAudio":
+            debug_write("Checking for 'explanationAudio' field (correct spelling)")
+            if voicevox_running and (override_existing or not note["explanationAudio"].strip()):
+                try:
+                    # If we generated audio above, use the same reference
+                    if audio_path_result[0]:
+                        audio_filename = os.path.basename(audio_path_result[0])
+                        note["explanationAudio"] = f"[sound:{audio_filename}]"
+                        debug_write("Audio reference saved to explanationAudio field (correct spelling)")
+                    else:
+                        note["explanationAudio"] = "[Audio generation skipped or failed]"
+                        debug_write("Audio generation was skipped or failed, setting placeholder text")
+                except Exception as e:
+                    debug_write(f"Error setting explanationAudio field (correct spelling): {str(e)}")
+                    # Continue even if this fails
         
         # Save changes - wrap in try/except to catch any issues
         try:
@@ -541,7 +638,10 @@ def process_current_card():
         if CONFIG["explaination_audio_field"] and not check_voicevox_running():
             progress.cancel()  # Hide progress dialog during confirmation
             
-            if askUser("VOICEVOX is not running. Audio generation will be skipped. Do you want to continue without audio?", title="VOICEVOX Not Running"):
+            voicevox_instructions = get_voicevox_install_instructions()
+            message = f"VOICEVOX is not running. Audio generation will be skipped.\n\n{voicevox_instructions}\n\nDo you want to continue without audio?"
+            
+            if askUser(message, title="VOICEVOX Not Running"):
                 # Re-create progress dialog after confirmation
                 progress = QProgressDialog("Processing...", "Cancel", 0, 100, mw)
                 progress.setWindowTitle("GPT Explaination Generator")
@@ -561,6 +661,46 @@ def process_current_card():
         progress.setLabelText("Generating explaination with OpenAI...")
         QApplication.processEvents()
         
+        # Set up a watchdog timer to detect if processing gets stuck
+        processing_timeout = 60  # seconds
+        processing_start_time = time.time()
+        processing_completed = [False]  # Use a list to allow modification in nested functions
+        timer = [None]  # Store the timer in a list to access it from nested functions
+        
+        # Create a timer to check if processing is taking too long
+        def check_timeout():
+            if not processing_completed[0]:
+                elapsed_time = time.time() - processing_start_time
+                if elapsed_time > processing_timeout:
+                    log_error(f"Processing timeout after {elapsed_time:.1f} seconds")
+                    mw.taskman.run_on_main(lambda: handle_timeout())
+                    # Stop the timer
+                    if timer[0]:
+                        timer[0].stop()
+            else:
+                # Stop the timer once processing is completed
+                if timer[0]:
+                    timer[0].stop()
+        
+        def handle_timeout():
+            try:
+                if not processing_completed[0] and progress and not progress.wasCanceled():
+                    progress.cancel()
+                    error_dialog = QMessageBox(mw)
+                    error_dialog.setIcon(QMessageBox.Icon.Warning)
+                    error_dialog.setWindowTitle("Processing Timeout")
+                    error_dialog.setText("The operation is taking longer than expected.")
+                    error_dialog.setInformativeText("The process might be stuck. Check the error logs for details.")
+                    error_dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+                    error_dialog.exec()
+            except Exception as e:
+                log_error(f"Error in handle_timeout: {str(e)}")
+        
+        # Start the timeout checker using QTimer
+        timer[0] = QTimer(mw)
+        timer[0].timeout.connect(check_timeout)
+        timer[0].start(5000)  # Check every 5 seconds
+        
         # Process the note in a separate thread to keep UI responsive
         def process_with_progress():
             try:
@@ -572,68 +712,111 @@ def process_current_card():
                         progress_value = 50
                     elif "Received explaination from OpenAI" in message:
                         progress_value = 70
+                        log_error(f"Progress update: {message}, value: {progress_value}")
+                    elif "Explaination saved to note" in message:
+                        progress_value = 75
+                        log_error(f"Progress update: {message}, value: {progress_value}")
                     elif "Generating audio" in message:
                         progress_value = 80
+                        log_error(f"Progress update: {message}, value: {progress_value}")
                     elif "Audio generated" in message:
                         progress_value = 90
+                        log_error(f"Progress update: {message}, value: {progress_value}")
+                    elif "Audio generation failed" in message or "Error generating audio" in message:
+                        progress_value = 85
+                        log_error(f"Progress update: {message}, value: {progress_value}")
+                    elif "VOICEVOX not running" in message:
+                        progress_value = 85
+                        log_error(f"Progress update: {message}, value: {progress_value}")
                     elif "Saving changes" in message:
                         progress_value = 95
+                        log_error(f"Progress update: {message}, value: {progress_value}")
                     elif "Changes saved successfully" in message:
                         progress_value = 98
+                        log_error(f"Progress update: {message}, value: {progress_value}")
                     
+                    # Force UI update on main thread
                     mw.taskman.run_on_main(lambda: update_progress_ui(message, progress_value))
                 
                 def update_progress_ui(message, value):
-                    progress.setValue(value)
-                    progress.setLabelText(message)
-                    QApplication.processEvents()
+                    try:
+                        if progress.wasCanceled():
+                            log_error("Progress dialog was canceled, skipping update")
+                            return
+                            
+                        progress.setValue(value)
+                        progress.setLabelText(message)
+                        QApplication.processEvents()
+                        log_error(f"UI updated: {message}, value: {value}")
+                    except Exception as e:
+                        log_error(f"Error updating progress UI: {str(e)}")
                 
                 # Call process_note with the progress callback
+                log_error("Starting process_note with progress callback")
                 result, message = process_note(note, override_existing, update_progress)
+                log_error(f"process_note completed with result: {result}, message: {message}")
+                
+                # Mark processing as completed to stop the timeout checker
+                processing_completed[0] = True
                 
                 # Update UI on the main thread
                 mw.taskman.run_on_main(lambda: handle_process_result(result, message, card, progress))
             except Exception as e:
+                # Mark processing as completed to stop the timeout checker
+                processing_completed[0] = True
+                
                 error_msg = str(e)
                 log_error("Error in process_with_progress", e)
                 mw.taskman.run_on_main(lambda: show_error(error_msg, progress))
         
         # Function to handle the result on the main thread
         def handle_process_result(success, message, card, progress):
-            if success:
-                progress.setValue(100)
-                progress.setLabelText("Refreshing card...")
-                QApplication.processEvents()
+            try:
+                if success:
+                    progress.setValue(100)
+                    progress.setLabelText("Refreshing card...")
+                    QApplication.processEvents()
+                    try:
+                        card.load()  # Refresh the card to show new content
+                        progress.cancel()
+                        tooltip("Explaination generated successfully!")
+                    except Exception as e:
+                        log_error("Error in card.load()", e)
+                        progress.cancel()
+                        tooltip("Explaination generated, but failed to refresh card.")
+                else:
+                    progress.cancel()
+                    error_dialog = QMessageBox(mw)
+                    error_dialog.setIcon(QMessageBox.Icon.Critical)
+                    error_dialog.setWindowTitle("Error")
+                    error_dialog.setText("Failed to generate explaination")
+                    error_dialog.setInformativeText(message)
+                    error_dialog.setDetailedText(f"Please check the error log for more details.\n\nError: {message}")
+                    error_dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+                    error_dialog.exec()
+            except Exception as e:
+                log_error(f"Error in handle_process_result: {str(e)}")
                 try:
-                    card.load()  # Refresh the card to show new content
                     progress.cancel()
-                    tooltip("Explaination generated successfully!")
-                except Exception as e:
-                    log_error("Error in card.load()", e)
-                    progress.cancel()
-                    tooltip("Explaination generated, but failed to refresh card.")
-            else:
+                except:
+                    pass
+                tooltip("An error occurred while handling the result.")
+        
+        # Function to show error on the main thread
+        def show_error(error_msg, progress):
+            try:
                 progress.cancel()
                 error_dialog = QMessageBox(mw)
                 error_dialog.setIcon(QMessageBox.Icon.Critical)
                 error_dialog.setWindowTitle("Error")
                 error_dialog.setText("Failed to generate explaination")
-                error_dialog.setInformativeText(message)
-                error_dialog.setDetailedText(f"Please check the error log for more details.\n\nError: {message}")
+                error_dialog.setInformativeText(f"Error: {error_msg}")
+                error_dialog.setDetailedText(f"Please check the error log for more details.\n\nError: {error_msg}")
                 error_dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
                 error_dialog.exec()
-        
-        # Function to show error on the main thread
-        def show_error(error_msg, progress):
-            progress.cancel()
-            error_dialog = QMessageBox(mw)
-            error_dialog.setIcon(QMessageBox.Icon.Critical)
-            error_dialog.setWindowTitle("Error")
-            error_dialog.setText("Failed to generate explaination")
-            error_dialog.setInformativeText(f"Error: {error_msg}")
-            error_dialog.setDetailedText(f"Please check the error log for more details.\n\nError: {error_msg}")
-            error_dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
-            error_dialog.exec()
+            except Exception as e:
+                log_error(f"Error in show_error: {str(e)}")
+                tooltip(f"Error: {error_msg}")
         
         # Start processing in a separate thread
         threading.Thread(target=process_with_progress).start()

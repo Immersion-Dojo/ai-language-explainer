@@ -37,16 +37,6 @@ If VOICEVOX is not running, the addon will display a message and continue withou
 
 ## Usage
 
-### During Review
-
-When reviewing cards of your configured note type, a "Generate Explaination" button will appear at the top of the screen. Click it to generate an explaination for the current card.
-
-If the card already has an explaination or audio, you'll be asked whether you want to override it.
-
-## Image Processing
-
-The addon includes the ability to analyze images in your cards. When an image is present in the configured picture field, it will be sent to GPT-4o for analysis, allowing the AI to provide more contextually relevant explainations based on the visual content.
-
 ## Requirements
 
 - Anki 25+
@@ -64,36 +54,3 @@ If you encounter any issues:
 4. If images aren't being processed correctly, make sure they are in a supported format (JPG, PNG, etc.)
 5. For audio generation issues, verify that VOICEVOX is running and accessible at http://localhost:50021
 6. Check the error_log.txt file in the addon directory for detailed error information
-
-## Changelog
-
-### Version 1.4.0
-- Removed bulk processing functionality to simplify the addon
-- Improved button placement during review
-- Enhanced error handling and logging
-
-### Version 1.3.4
-- Reimplemented audio generation using VOICEVOX, a free Japanese text-to-speech software
-- Added VOICEVOX status indicators in the settings dialog
-- Improved error handling for audio generation
-
-### Version 1.3.3
-- Completely removed OpenAI-based audio generation functionality to address stability issues on macOS
-
-### Version 1.3.2
-- Temporarily disabled audio generation to troubleshoot stability issues on macOS
-
-### Version 1.3.1
-- Added comprehensive error handling and logging
-- Fixed stability issues on macOS, especially with audio file generation
-- Added safeguards to prevent crashes during note processing
-
-### Version 1.2.0
-- Added option to preserve existing explainations and audio
-
-### Version 1.1.0
-- Added image analysis capability
-
-## Credits
-
-Created by Ray 
