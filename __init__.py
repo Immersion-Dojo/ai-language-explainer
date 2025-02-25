@@ -52,7 +52,7 @@ def check_dependencies():
         import requests
     except ImportError:
         # Show a message about installing dependencies
-        tooltip("Installing required dependencies for GPT Explanation addon...")
+        tooltip("Installing required dependencies for GPT Explaination addon...")
         
         # Get the addon directory
         addon_dir = os.path.dirname(os.path.abspath(__file__))
@@ -93,10 +93,10 @@ CONFIG = {
     "sentence_field": "",
     "definition_field": "",
     "picture_field": "",
-    "explanation_field": "",
-    "explanation_audio_field": "",  # Kept for backward compatibility
+    "explaination_field": "",
+    "explaination_audio_field": "",  # Kept for backward compatibility
     "api_key": "",
-    "gpt_prompt": "Please write an example sentence using the word '{word}' in the context of the original sentence: '{sentence}'. The definition of the word is: '{definition}'. Create an explanation that helps a Japanese language learner understand how this word is used."
+    "gpt_prompt": "Please write an example sentence using the word '{word}' in the context of the original sentence: '{sentence}'. The definition of the word is: '{definition}'. Create an explaination that helps a Japanese language learner understand how this word is used."
 }
 
 # Load configuration
@@ -133,7 +133,7 @@ def get_fields_for_note_type(note_type_name):
 class ConfigDialog(QDialog):
     def __init__(self, parent=None):
         super(ConfigDialog, self).__init__(parent)
-        self.setWindowTitle("GPT Explanation Settings")
+        self.setWindowTitle("GPT Explaination Settings")
         self.setup_ui()
         self.load_settings()
 
@@ -185,20 +185,20 @@ class ConfigDialog(QDialog):
         # Output Fields
         layout.addWidget(QLabel("<b>Output Fields:</b>"))
         
-        explanation_field_layout = QHBoxLayout()
-        explanation_field_label = QLabel("Explanation Field:")
-        self.explanation_field_combo = QComboBox()
-        explanation_field_layout.addWidget(explanation_field_label)
-        explanation_field_layout.addWidget(self.explanation_field_combo)
-        layout.addLayout(explanation_field_layout)
+        explaination_field_layout = QHBoxLayout()
+        explaination_field_label = QLabel("Explaination Field:")
+        self.explaination_field_combo = QComboBox()
+        explaination_field_layout.addWidget(explaination_field_label)
+        explaination_field_layout.addWidget(self.explaination_field_combo)
+        layout.addLayout(explaination_field_layout)
         
         # Audio field
-        explanation_audio_field_layout = QHBoxLayout()
-        explanation_audio_field_label = QLabel("Explanation Audio Field:")
-        self.explanation_audio_field_combo = QComboBox()
-        explanation_audio_field_layout.addWidget(explanation_audio_field_label)
-        explanation_audio_field_layout.addWidget(self.explanation_audio_field_combo)
-        layout.addLayout(explanation_audio_field_layout)
+        explaination_audio_field_layout = QHBoxLayout()
+        explaination_audio_field_label = QLabel("Explaination Audio Field:")
+        self.explaination_audio_field_combo = QComboBox()
+        explaination_audio_field_layout.addWidget(explaination_audio_field_label)
+        explaination_audio_field_layout.addWidget(self.explaination_audio_field_combo)
+        layout.addLayout(explaination_audio_field_layout)
         
         # VOICEVOX notice
         voicevox_status = "Running" if check_voicevox_running() else "Not Running"
@@ -240,7 +240,7 @@ class ConfigDialog(QDialog):
         # Clear and update all field comboboxes
         for combo in [self.word_field_combo, self.sentence_field_combo, 
                       self.definition_field_combo, self.picture_field_combo,
-                      self.explanation_field_combo, self.explanation_audio_field_combo]:
+                      self.explaination_field_combo, self.explaination_audio_field_combo]:
             current_text = combo.currentText()
             combo.clear()
             combo.addItems(fields)
@@ -263,8 +263,8 @@ class ConfigDialog(QDialog):
             "sentence_field": self.sentence_field_combo,
             "definition_field": self.definition_field_combo,
             "picture_field": self.picture_field_combo,
-            "explanation_field": self.explanation_field_combo,
-            "explanation_audio_field": self.explanation_audio_field_combo
+            "explaination_field": self.explaination_field_combo,
+            "explaination_audio_field": self.explaination_audio_field_combo
         }
         
         for field_name, combo in field_combos.items():
@@ -282,8 +282,8 @@ class ConfigDialog(QDialog):
         CONFIG["sentence_field"] = self.sentence_field_combo.currentText()
         CONFIG["definition_field"] = self.definition_field_combo.currentText()
         CONFIG["picture_field"] = self.picture_field_combo.currentText()
-        CONFIG["explanation_field"] = self.explanation_field_combo.currentText()
-        CONFIG["explanation_audio_field"] = self.explanation_audio_field_combo.currentText()
+        CONFIG["explaination_field"] = self.explaination_field_combo.currentText()
+        CONFIG["explaination_audio_field"] = self.explaination_audio_field_combo.currentText()
         CONFIG["api_key"] = self.api_key_input.text()
         CONFIG["gpt_prompt"] = self.gpt_prompt_input.text()
         
@@ -327,17 +327,17 @@ def process_note_debug(note, override_existing=True, progress_callback=None):
         debug_write(f"Definition field: {CONFIG['definition_field']} = {definition[:30]}...")
         debug_write(f"Picture field: {CONFIG['picture_field']} = {'Has content' if picture else 'Empty'}")
         
-        # Check if explanation already exists and we're not overriding
+        # Check if explaination already exists and we're not overriding
         if not override_existing:
             debug_write("Checking if content already exists")
-            explanation_exists = CONFIG["explanation_field"] in note and note[CONFIG["explanation_field"]].strip()
-            audio_exists = CONFIG["explanation_audio_field"] in note and note[CONFIG["explanation_audio_field"]].strip()
+            explaination_exists = CONFIG["explaination_field"] in note and note[CONFIG["explaination_field"]].strip()
+            audio_exists = CONFIG["explaination_audio_field"] in note and note[CONFIG["explaination_audio_field"]].strip()
             
-            debug_write(f"Explanation exists: {explanation_exists}")
+            debug_write(f"Explaination exists: {explaination_exists}")
             debug_write(f"Audio exists: {audio_exists}")
             
             # Skip if both fields already have content
-            if explanation_exists and audio_exists:
+            if explaination_exists and audio_exists:
                 debug_write("Both fields have content, skipping")
                 return True, "Content already exists"
         
@@ -354,47 +354,47 @@ def process_note_debug(note, override_existing=True, progress_callback=None):
             if progress_callback:
                 progress_callback("Sending request to OpenAI...")
                 
-            explanation = process_with_openai(CONFIG["api_key"], prompt, picture)
-            if not explanation:
-                debug_write("Failed to generate explanation from OpenAI")
-                log_error("Failed to generate explanation from OpenAI")
-                return False, "Failed to generate explanation from OpenAI"
-            debug_write(f"Received explanation: {explanation[:50]}...")
+            explaination = process_with_openai(CONFIG["api_key"], prompt, picture)
+            if not explaination:
+                debug_write("Failed to generate explaination from OpenAI")
+                log_error("Failed to generate explaination from OpenAI")
+                return False, "Failed to generate explaination from OpenAI"
+            debug_write(f"Received explaination: {explaination[:50]}...")
             
             if progress_callback:
-                progress_callback("Received explanation from OpenAI")
+                progress_callback("Received explaination from OpenAI")
         except Exception as e:
             debug_write(f"Error in process_with_openai: {str(e)}")
             log_error("Error in process_with_openai", e)
             return False, f"Error calling OpenAI API: {str(e)}"
         
-        # Save explanation to note
-        if CONFIG["explanation_field"] in note:
-            debug_write(f"Saving explanation to field: {CONFIG['explanation_field']}")
-            if override_existing or not note[CONFIG["explanation_field"]].strip():
+        # Save explaination to note
+        if CONFIG["explaination_field"] in note:
+            debug_write(f"Saving explaination to field: {CONFIG['explaination_field']}")
+            if override_existing or not note[CONFIG["explaination_field"]].strip():
                 try:
-                    note[CONFIG["explanation_field"]] = explanation
-                    debug_write("Explanation saved to note")
+                    note[CONFIG["explaination_field"]] = explaination
+                    debug_write("Explaination saved to note")
                     
                     if progress_callback:
-                        progress_callback("Explanation saved to note")
+                        progress_callback("Explaination saved to note")
                 except Exception as e:
-                    debug_write(f"Error setting explanation field: {str(e)}")
-                    log_error(f"Error setting explanation field: {CONFIG['explanation_field']}", e)
-                    return False, f"Error saving explanation to note: {str(e)}"
+                    debug_write(f"Error setting explaination field: {str(e)}")
+                    log_error(f"Error setting explaination field: {CONFIG['explaination_field']}", e)
+                    return False, f"Error saving explaination to note: {str(e)}"
         
         # Generate audio with VOICEVOX if available
-        if CONFIG["explanation_audio_field"] in note:
+        if CONFIG["explaination_audio_field"] in note:
             if check_voicevox_running():
-                debug_write(f"Processing audio for field: {CONFIG['explanation_audio_field']}")
-                if override_existing or not note[CONFIG["explanation_audio_field"]].strip():
+                debug_write(f"Processing audio for field: {CONFIG['explaination_audio_field']}")
+                if override_existing or not note[CONFIG["explaination_audio_field"]].strip():
                     try:
                         debug_write("Calling generate_audio")
                         
                         if progress_callback:
                             progress_callback("Generating audio with VOICEVOX...")
                             
-                        audio_path = generate_audio(CONFIG["api_key"], explanation)
+                        audio_path = generate_audio(CONFIG["api_key"], explaination)
                         
                         if audio_path:
                             # Get just the filename from the path
@@ -404,14 +404,14 @@ def process_note_debug(note, override_existing=True, progress_callback=None):
                             
                             # Save the audio reference to the note
                             debug_write("Saving audio reference to note")
-                            note[CONFIG["explanation_audio_field"]] = f"[sound:{audio_filename}]"
+                            note[CONFIG["explaination_audio_field"]] = f"[sound:{audio_filename}]"
                             debug_write("Audio reference saved to note")
                             
                             if progress_callback:
                                 progress_callback("Audio generated and saved to note")
                         else:
                             debug_write("Audio generation failed, setting placeholder text")
-                            note[CONFIG["explanation_audio_field"]] = "[Audio generation failed]"
+                            note[CONFIG["explaination_audio_field"]] = "[Audio generation failed]"
                             
                             if progress_callback:
                                 progress_callback("Audio generation failed")
@@ -424,9 +424,9 @@ def process_note_debug(note, override_existing=True, progress_callback=None):
                             progress_callback(f"Error generating audio: {str(e)}")
             else:
                 debug_write("VOICEVOX is not running, setting placeholder text")
-                if override_existing or not note[CONFIG["explanation_audio_field"]].strip():
+                if override_existing or not note[CONFIG["explaination_audio_field"]].strip():
                     try:
-                        note[CONFIG["explanation_audio_field"]] = "[VOICEVOX not running - please start VOICEVOX to generate audio]"
+                        note[CONFIG["explaination_audio_field"]] = "[VOICEVOX not running - please start VOICEVOX to generate audio]"
                         debug_write("Added placeholder text to audio field")
                         
                         if progress_callback:
@@ -475,7 +475,7 @@ def process_current_card():
         
         # Create a progress dialog with a visible progress bar
         progress = QProgressDialog("Initializing...", "Cancel", 0, 100, mw)
-        progress.setWindowTitle("GPT Explanation Generator")
+        progress.setWindowTitle("GPT Explaination Generator")
         progress.setMinimumDuration(0)  # Show immediately
         progress.setAutoClose(False)    # Don't close automatically
         progress.setAutoReset(False)    # Don't reset automatically
@@ -498,22 +498,22 @@ def process_current_card():
         progress.setLabelText("Checking existing content...")
         QApplication.processEvents()
         
-        # Check if explanation already exists
-        explanation_exists = CONFIG["explanation_field"] in note and note[CONFIG["explanation_field"]].strip()
-        audio_exists = CONFIG["explanation_audio_field"] in note and note[CONFIG["explanation_audio_field"]].strip()
+        # Check if explaination already exists
+        explaination_exists = CONFIG["explaination_field"] in note and note[CONFIG["explaination_field"]].strip()
+        audio_exists = CONFIG["explaination_audio_field"] in note and note[CONFIG["explaination_audio_field"]].strip()
         
         # Ask for confirmation if content exists
         override_existing = True
-        if explanation_exists or audio_exists:
+        if explaination_exists or audio_exists:
             progress.cancel()  # Hide progress dialog during confirmation
             
             msg = "This card already has "
-            if explanation_exists and audio_exists:
-                msg += "an explanation and audio."
-            elif explanation_exists:
-                msg += "an explanation."
+            if explaination_exists and audio_exists:
+                msg += "an explaination and audio."
+            elif explaination_exists:
+                msg += "an explaination."
             else:
-                msg += "explanation audio."
+                msg += "explaination audio."
             
             msg += " Do you want to override it?"
             
@@ -523,7 +523,7 @@ def process_current_card():
                 
             # Re-create progress dialog after confirmation
             progress = QProgressDialog("Processing...", "Cancel", 0, 100, mw)
-            progress.setWindowTitle("GPT Explanation Generator")
+            progress.setWindowTitle("GPT Explaination Generator")
             progress.setMinimumDuration(0)
             progress.setAutoClose(False)
             progress.setAutoReset(False)
@@ -538,19 +538,19 @@ def process_current_card():
         QApplication.processEvents()
         
         # Check if VOICEVOX is running if audio field is configured
-        if CONFIG["explanation_audio_field"] and not check_voicevox_running():
+        if CONFIG["explaination_audio_field"] and not check_voicevox_running():
             progress.cancel()  # Hide progress dialog during confirmation
             
             if askUser("VOICEVOX is not running. Audio generation will be skipped. Do you want to continue without audio?", title="VOICEVOX Not Running"):
                 # Re-create progress dialog after confirmation
                 progress = QProgressDialog("Processing...", "Cancel", 0, 100, mw)
-                progress.setWindowTitle("GPT Explanation Generator")
+                progress.setWindowTitle("GPT Explaination Generator")
                 progress.setMinimumDuration(0)
                 progress.setAutoClose(False)
                 progress.setAutoReset(False)
                 progress.setWindowModality(Qt.WindowModality.ApplicationModal)
                 progress.setValue(30)
-                progress.setLabelText("Generating explanation with OpenAI...")
+                progress.setLabelText("Generating explaination with OpenAI...")
                 progress.show()
                 QApplication.processEvents()
             else:
@@ -558,7 +558,7 @@ def process_current_card():
                 return
         
         progress.setValue(40)
-        progress.setLabelText("Generating explanation with OpenAI...")
+        progress.setLabelText("Generating explaination with OpenAI...")
         QApplication.processEvents()
         
         # Process the note in a separate thread to keep UI responsive
@@ -570,7 +570,7 @@ def process_current_card():
                     progress_value = 40
                     if "Sending request to OpenAI" in message:
                         progress_value = 50
-                    elif "Received explanation from OpenAI" in message:
+                    elif "Received explaination from OpenAI" in message:
                         progress_value = 70
                     elif "Generating audio" in message:
                         progress_value = 80
@@ -607,17 +607,17 @@ def process_current_card():
                 try:
                     card.load()  # Refresh the card to show new content
                     progress.cancel()
-                    tooltip("Explanation generated successfully!")
+                    tooltip("Explaination generated successfully!")
                 except Exception as e:
                     log_error("Error in card.load()", e)
                     progress.cancel()
-                    tooltip("Explanation generated, but failed to refresh card.")
+                    tooltip("Explaination generated, but failed to refresh card.")
             else:
                 progress.cancel()
                 error_dialog = QMessageBox(mw)
                 error_dialog.setIcon(QMessageBox.Icon.Critical)
                 error_dialog.setWindowTitle("Error")
-                error_dialog.setText("Failed to generate explanation")
+                error_dialog.setText("Failed to generate explaination")
                 error_dialog.setInformativeText(message)
                 error_dialog.setDetailedText(f"Please check the error log for more details.\n\nError: {message}")
                 error_dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
@@ -629,7 +629,7 @@ def process_current_card():
             error_dialog = QMessageBox(mw)
             error_dialog.setIcon(QMessageBox.Icon.Critical)
             error_dialog.setWindowTitle("Error")
-            error_dialog.setText("Failed to generate explanation")
+            error_dialog.setText("Failed to generate explaination")
             error_dialog.setInformativeText(f"Error: {error_msg}")
             error_dialog.setDetailedText(f"Please check the error log for more details.\n\nError: {error_msg}")
             error_dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
@@ -675,12 +675,12 @@ def add_button_to_reviewer():
             button.style.borderRadius = '4px';
             button.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
             
-            button.innerText = 'Generate Explanation';
+            button.innerText = 'Generate Explaination';
             
             // Set up the click handler with debugging
             button.onclick = function() {
-                console.log('Generate Explanation button clicked');
-                pycmd('gpt_explanation');
+                console.log('Generate Explaination button clicked');
+                pycmd('gpt_explaination');
                 return false;
             };
             
@@ -703,7 +703,7 @@ def add_button_to_reviewer():
             // Add to the document body
             document.body.appendChild(buttonContainer);
             
-            console.log('GPT Explanation button added successfully');
+            console.log('GPT Explaination button added successfully');
         })();
         """
         
@@ -765,8 +765,8 @@ def on_js_message(handled, message, context):
         log_error(f"Message is string, cmd: {cmd}")
     
     # Check if this is our command
-    if cmd == "gpt_explanation":
-        log_error("Recognized gpt_explanation command, processing...")
+    if cmd == "gpt_explaination":
+        log_error("Recognized gpt_explaination command, processing...")
         process_current_card()
         
         # Try to detect Anki version to return appropriate value
@@ -791,7 +791,7 @@ def on_js_message(handled, message, context):
 # Set up menu items
 def setup_menu():
     # Add the menu option to open settings
-    action = QAction("GPT Explanation Settings", mw)
+    action = QAction("GPT Explaination Settings", mw)
     qconnect(action.triggered, open_settings)
     mw.form.menuTools.addAction(action)
     
@@ -806,7 +806,7 @@ def open_settings():
 # Initialize the add-on
 def init():
     try:
-        log_error("Initializing GPT Explanation addon")
+        log_error("Initializing GPT Explaination addon")
         
         # Load configuration
         load_config()
@@ -827,7 +827,7 @@ def init():
         gui_hooks.webview_did_receive_js_message.append(on_js_message)
         log_error("Registered webview_did_receive_js_message hook")
         
-        log_error("GPT Explanation addon initialization complete")
+        log_error("GPT Explaination addon initialization complete")
     except Exception as e:
         log_error(f"Error during initialization: {str(e)}")
         log_error(traceback.format_exc())

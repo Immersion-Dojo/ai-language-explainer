@@ -82,7 +82,7 @@ def extract_image_from_html(html_content):
 
 def process_with_openai(api_key, prompt, picture_content=""):
     """
-    Process the prompt with OpenAI's API and return the explanation
+    Process the prompt with OpenAI's API and return the explaination
     
     Parameters:
     - api_key: OpenAI API key
@@ -90,7 +90,7 @@ def process_with_openai(api_key, prompt, picture_content=""):
     - picture_content: HTML content of the picture field
     
     Returns:
-    - str: The explanation from GPT
+    - str: The explaination from GPT
     """
     headers = {
         "Content-Type": "application/json",
@@ -116,8 +116,8 @@ def process_with_openai(api_key, prompt, picture_content=""):
         
         response_data = response.json()
         if 'choices' in response_data and len(response_data['choices']) > 0:
-            explanation = response_data['choices'][0]['message']['content']
-            return explanation
+            explaination = response_data['choices'][0]['message']['content']
+            return explaination
         else:
             return None
     except Exception as e:
@@ -164,7 +164,7 @@ def generate_audio(api_key, text):
         # Create a unique filename based on content hash and timestamp
         file_hash = base64.b16encode(text.encode()).decode()[:16].lower()
         timestamp = int(time.time())
-        filename = f"explanation_audio_{file_hash}_{timestamp}.wav"
+        filename = f"explaination_audio_{file_hash}_{timestamp}.wav"
         file_path = os.path.join(media_dir, filename)
         debug_log(f"Target file path: {file_path}")
 

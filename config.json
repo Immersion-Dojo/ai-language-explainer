@@ -4,8 +4,8 @@
     "sentence_field": "sentence",
     "definition_field": "definition",
     "picture_field": "picture",
-    "explanation_field": "explanation",
-    "explanation_audio_field": "explanationAudio",
+    "explaination_field": "explaination",
+    "explaination_audio_field": "explainationAudio",
     "api_key": "",
-    "gpt_prompt": "Please write an explanation of the word '{word}' in the context of the original sentence: '{sentence}'. The definition of the word is: '{definition}'. Create an explanation that helps a Japanese language beginner understand how this word is used in this context and its wider meaning if necessary. Explain it in the same way a native would explain it. Don't use any English, only use simpler Japanese."
+    "gpt_prompt": "Please write an explaination of the word '{word}' in the context of the original sentence: '{sentence}'. The definition of the word is: '{definition}'. Create an explaination that helps a Japanese language beginner understand how this word is used in this context and its wider meaning if necessary. Explain it in the same way a native would explain it. Don't use any English, only use simpler Japanese."
 }

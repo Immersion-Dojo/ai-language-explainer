@@ -1,23 +1,23 @@
-# GPT Explanation Generator for Anki
+# GPT Explaination Generator for Anki
 
-This addon generates explanations for Japanese language learning cards using OpenAI's GPT-4o.
+This addon generates explainations for Japanese language learning cards using OpenAI's GPT-4o.
 
 ## Features
 
-- Automatically generates explanations for words based on their definition, example sentence, and context
-- Analyzes images in your cards to provide more contextual explanations
-- Creates high-quality audio recordings of the explanations using VOICEVOX (requires VOICEVOX to be running)
+- Automatically generates explainations for words based on their definition, example sentence, and context
+- Analyzes images in your cards to provide more contextual explainations
+- Creates high-quality audio recordings of the explainations using VOICEVOX (requires VOICEVOX to be running)
 - Works with any note type (configurable fields)
-- Adds a button during review to generate explanations on demand
-- Option to preserve existing explanations and audio (avoid overriding)
+- Adds a button during review to generate explainations on demand
+- Option to preserve existing explainations and audio (avoid overriding)
 
 ## Setup
 
 1. Install the addon through Anki's addon manager
-2. Go to Tools > GPT Explanation Settings
+2. Go to Tools > GPT Explaination Settings
 3. Select your note type (e.g., "Ray's Sentence Mining")
 4. Configure the input fields (word, sentence, definition, picture)
-5. Configure the output fields (explanation, explanation audio)
+5. Configure the output fields (explaination, explaination audio)
 6. Enter your OpenAI API key
 7. Customize the GPT prompt if desired
 8. Click Save
@@ -29,7 +29,7 @@ This addon now uses VOICEVOX for audio generation. VOICEVOX is a free Japanese t
 To use the audio generation feature:
 
 1. Download and install VOICEVOX from the [official website](https://voicevox.hiroshiba.jp/)
-2. Start VOICEVOX before generating explanations in Anki
+2. Start VOICEVOX before generating explainations in Anki
 3. VOICEVOX must be running in the background for audio generation to work
 4. The addon will automatically detect if VOICEVOX is running and use it for audio generation
 
@@ -39,13 +39,13 @@ If VOICEVOX is not running, the addon will display a message and continue withou
 
 ### During Review
 
-When reviewing cards of your configured note type, a "Generate Explanation" button will appear at the top of the screen. Click it to generate an explanation for the current card.
+When reviewing cards of your configured note type, a "Generate Explaination" button will appear at the top of the screen. Click it to generate an explaination for the current card.
 
-If the card already has an explanation or audio, you'll be asked whether you want to override it.
+If the card already has an explaination or audio, you'll be asked whether you want to override it.
 
 ## Image Processing
 
-The addon includes the ability to analyze images in your cards. When an image is present in the configured picture field, it will be sent to GPT-4o for analysis, allowing the AI to provide more contextually relevant explanations based on the visual content.
+The addon includes the ability to analyze images in your cards. When an image is present in the configured picture field, it will be sent to GPT-4o for analysis, allowing the AI to provide more contextually relevant explainations based on the visual content.
 
 ## Requirements
 
@@ -89,7 +89,7 @@ If you encounter any issues:
 - Added safeguards to prevent crashes during note processing
 
 ### Version 1.2.0
-- Added option to preserve existing explanations and audio
+- Added option to preserve existing explainations and audio
 
 ### Version 1.1.0
 - Added image analysis capability
