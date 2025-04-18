@@ -1,7 +1,7 @@
 # File: __init__.py
 from aqt import mw, gui_hooks
 from aqt.utils import qconnect, showInfo, tooltip, askUser
-from aqt.qt import QAction, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QLineEdit, QProgressDialog, QCheckBox, QMessageBox, QApplication, Qt, QTimer
+from aqt.qt import QAction, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QLineEdit, QProgressDialog, QCheckBox, QMessageBox, QApplication, Qt, QTimer, QMenu
 from anki.notes import Note
 import os
 import json
@@ -12,6 +12,7 @@ import subprocess
 import traceback
 import atexit
 import platform
+from aqt.browser import Browser
 
 # Set up crash handler
 def setup_crash_handler():
@@ -679,7 +680,20 @@ def process_current_card():
         progress.setMinimumDuration(0)  # Show immediately
         progress.setAutoClose(False)    # Don't close automatically
         progress.setAutoReset(False)    # Don't reset automatically
-        progress.setWindowModality(Qt.WindowModality.ApplicationModal)  # Block input to other windows
+        
+        # Fix for Qt6 compatibility - use Qt.WindowModality.ApplicationModal instead of Qt.WindowModal
+        try:
+            # Try Qt6 style enum first
+            progress.setWindowModality(Qt.WindowModality.ApplicationModal) 
+        except AttributeError:
+            # Fallback to Qt5 style for backwards compatibility
+            try:
+                progress.setWindowModality(Qt.ApplicationModal)
+            except:
+                # Last resort fallback - don't set modality if both approaches fail
+                log_error("Failed to set window modality - Qt version compatibility issue")
+                
+        progress.setMinimumWidth(400)   # Set a fixed minimum width to prevent resizing issues
         progress.setValue(0)
         progress.setLabelText("Checking note type...")
         progress.show()  # Explicitly show the dialog
@@ -1081,13 +1095,172 @@ def setup_menu():
     qconnect(action.triggered, open_settings)
     mw.form.menuTools.addAction(action)
     
-    # Remove browser menu action for bulk processing
-    # gui_hooks.browser_menus_did_init.append(setup_browser_menu)
+    # Enable browser menu action for bulk processing
+    log_error("Registering browser_menus_did_init hook for batch processing")
+    gui_hooks.browser_menus_did_init.append(setup_browser_menu)
+    log_error("Browser hook registered")
 
 # Open settings dialog
 def open_settings():
     dialog = ConfigDialog(mw)
     dialog.exec()
+
+# Batch process selected notes from the browser
+def batch_process_notes():
+    from aqt.qt import QProgressDialog, QMessageBox
+    
+    browser = mw.app.activeWindow()
+    if not isinstance(browser, Browser):
+        showInfo("Please open this from the Browser view")
+        return
+    
+    # Get selected note ids
+    selected_notes = browser.selectedNotes()
+    if not selected_notes:
+        showInfo("No cards selected. Please select cards to process.")
+        return
+    
+    # Check if configuration is loaded
+    if not CONFIG["api_key"]:
+        showInfo("Please set your OpenAI API key in the GPT Explaination Settings.")
+        return
+    
+    # Ask if user wants to overwrite existing explanations
+    override_existing = askUser("Would you like to overwrite existing explanations and audio?", 
+                              title="GPT Explainer",
+                              defaultno=False)
+    
+    # Create a progress dialog with fixed width to avoid the resizing issue
+    progress = QProgressDialog("Processing cards...", "Cancel", 0, len(selected_notes) + 1, mw)
+    progress.setWindowTitle("GPT Explainer Batch Processing")
+    
+    # Fix for Qt6 compatibility - use Qt.WindowModality.ApplicationModal instead of Qt.WindowModal
+    try:
+        # Try Qt6 style enum first
+        progress.setWindowModality(Qt.WindowModality.ApplicationModal) 
+    except AttributeError:
+        # Fallback to Qt5 style for backwards compatibility
+        try:
+            progress.setWindowModality(Qt.ApplicationModal)
+        except:
+            # Last resort fallback - don't set modality if both approaches fail
+            log_error("Failed to set window modality - Qt version compatibility issue")
+            
+    progress.setMinimumWidth(400)  # Set fixed width to avoid resizing issue
+    progress.setValue(0)
+    progress.show()
+    
+    # Process notes in a separate thread to keep UI responsive
+    def process_notes_thread():
+        success_count = 0
+        skipped_count = 0
+        error_count = 0
+        missing_fields_count = 0
+        
+        try:
+            for i, note_id in enumerate(selected_notes):
+                if progress.wasCanceled():
+                    break
+                
+                note = mw.col.get_note(note_id)
+                
+                # Update progress UI from main thread
+                mw.taskman.run_on_main(lambda i=i, total=len(selected_notes): 
+                    progress.setLabelText(f"Processing card {i+1} of {total}..."))
+                mw.taskman.run_on_main(lambda i=i: progress.setValue(i+1))
+                
+                # Skip processing if note type doesn't match configured type
+                model_name = note.note_type()["name"]
+                if model_name != CONFIG["note_type"]:
+                    log_error(f"Skipping note {note_id}: Note type {model_name} doesn't match configured type {CONFIG['note_type']}")
+                    missing_fields_count += 1
+                    continue
+                
+                # Skip processing if required fields are missing
+                required_fields = [CONFIG["word_field"], CONFIG["sentence_field"], CONFIG["definition_field"]]
+                if not all(field in note and field in note.keys() for field in required_fields):
+                    log_error(f"Skipping note {note_id}: Missing required fields")
+                    missing_fields_count += 1
+                    continue
+                
+                # Process the note
+                success, message = process_note_debug(note, override_existing)
+                if success:
+                    if message == "Content already exists":
+                        skipped_count += 1
+                    else:
+                        success_count += 1
+                        # Save changes to the database
+                        note.flush()
+                else:
+                    error_count += 1
+            
+            # Final update on main thread
+            mw.taskman.run_on_main(lambda: progress.setValue(len(selected_notes) + 1))
+            
+            # Show results
+            mw.taskman.run_on_main(lambda: 
+                showInfo(f"Batch processing complete:\n"
+                         f"{success_count} cards processed successfully\n"
+                         f"{skipped_count} cards skipped (already had content)\n"
+                         f"{missing_fields_count} cards skipped (missing fields or wrong note type)\n"
+                         f"{error_count} cards failed"))
+            
+        except Exception as e:
+            log_error(f"Error in batch processing: {str(e)}")
+            log_error(traceback.format_exc())
+            mw.taskman.run_on_main(lambda: 
+                showInfo(f"Error in batch processing: {str(e)}"))
+        finally:
+            mw.taskman.run_on_main(lambda: progress.hide())
+    
+    # Start processing thread
+    threading.Thread(target=process_notes_thread, daemon=True).start()
+
+# Add browser menu action for bulk processing
+def setup_browser_menu(browser):
+    log_error("Setting up browser menu for batch processing")
+    
+    # Test if we can access the menu
+    if hasattr(browser.form, 'menuEdit'):
+        log_error("Browser has menuEdit attribute")
+    else:
+        log_error("Browser does NOT have menuEdit attribute - trying alternative approach")
+        # Backwards compatibility with different Anki versions
+        try:
+            # Try to find the Edit menu by name
+            for menu in browser.form.menubar.findChildren(QMenu):
+                if menu.title() == "Edit":
+                    log_error("Found Edit menu by title")
+                    action = QAction("Batch Generate GPT Explanations", browser)
+                    qconnect(action.triggered, batch_process_notes)
+                    menu.addSeparator()
+                    menu.addAction(action)
+                    log_error("Action added to Edit menu found by title")
+                    return
+        except Exception as e:
+            log_error(f"Error finding Edit menu: {str(e)}")
+    
+    # Original implementation
+    try:
+        action = QAction("Batch Generate GPT Explanations", browser)
+        qconnect(action.triggered, batch_process_notes)
+        browser.form.menuEdit.addSeparator()
+        browser.form.menuEdit.addAction(action)
+        log_error("Browser menu setup complete")
+    except Exception as e:
+        log_error(f"Error setting up browser menu: {str(e)}")
+        
+        # Try adding to a different menu as fallback
+        try:
+            log_error("Trying to add to Tools menu instead")
+            action = QAction("Batch Generate GPT Explanations", browser)
+            qconnect(action.triggered, batch_process_notes)
+            browser.form.menuTools.addSeparator()
+            browser.form.menuTools.addAction(action)
+            log_error("Added action to Tools menu as fallback")
+        except Exception as e2:
+            log_error(f"Error adding to Tools menu: {str(e2)}")
 
 # Initialize the add-on
 def init():
