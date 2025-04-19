@@ -693,8 +693,8 @@ def process_current_card():
         audio_exists = CONFIG["explanation_audio_field"] in note and note[CONFIG["explanation_audio_field"]].strip()
         
         # Ask separate override questions
-        override_text = askUser("Do you want to override the text?", title="GPT Explainer", defaultno=False)
-        override_audio = askUser("Do you want to override the voice field?", title="GPT Explainer", defaultno=False)
+        override_text = askUser("Do you want to override the explanation field?", title="GPT Explainer", defaultno=False)
+        override_audio = askUser("Do you want to override the explanation audio field?", title="GPT Explainer", defaultno=False)
         # Store audio override flag to skip audio generation in backend
         CONFIG["override_audio"] = override_audio
         # Proceed directly to voicevox status check
@@ -1054,9 +1054,9 @@ def batch_process_notes():
         return
     
     # Ask if user wants to overwrite text only
-    override_text = askUser("Do you want to override the text?", title="GPT Explainer", defaultno=False)
+    override_text = askUser("Do you want to override the explanation field?", title="GPT Explainer", defaultno=False)
     # Ask if user wants to overwrite the voice field
-    override_audio = askUser("Do you want to override the voice field?", title="GPT Explainer", defaultno=False)
+    override_audio = askUser("Do you want to override the explanation audio field?", title="GPT Explainer", defaultno=False)
     # Store audio override flag to skip audio generation in backend
     CONFIG["override_audio"] = override_audio
     
