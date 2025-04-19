@@ -1,6 +1,6 @@
 {
-    "name": "GPT Explainer",
-    "package": "gpt_explainer",
+    "name": "GPT Language Explainer",
+    "package": "gpt-language-explainer",
     "ankiweb_id": "",
     "author": "ramjad",
     "version": "1.1.0",

@@ -98,7 +98,7 @@ CONFIG = {
     "explanation_audio_field": "",
     "openai_key": "",
     "gpt_prompt": "Please write a short explanation of the word '{word}' in the context of the original sentence: '{sentence}'. The definition of the word is: '{definition}'. Write an explanation that helps a Japanese beginner understand the word and how it is used with this context as an example. Explain it in the same way a native would explain it to a child. Don't use any English, only use simpler Japanese. Don't write the furigana for any of the words in brackets after the word. Don't start with stuff like \u3068\u3044\u3046\u8a00\u8449\u3092\u7c21\u5358\u306b\u8aac\u660e\u3059\u308b\u306d, just dive straight into explaining after starting with the word.",
-    "tts_engine": "VoiceVox",
+    "tts_engine": "OpenAI TTS",
     "elevenlabs_key": "",
     "elevenlabs_voice_id": "",
     "openai_tts_voice": "alloy"
@@ -107,10 +107,42 @@ CONFIG = {
 # Load configuration
 def load_config():
     global CONFIG
-    config = mw.addonManager.getConfig(__name__)
-    if config:
-        CONFIG.update(config)
-        
+    # Load default values from meta.json
+    addon_dir = os.path.dirname(os.path.abspath(__file__))
+    defaults = {}
+    try:
+        with open(os.path.join(addon_dir, "meta.json"), encoding="utf-8") as mf:
+            meta = json.load(mf)
+            defaults = meta.get("config", {}) or {}
+    except Exception:
+        pass
+    # Load user config
+    user = mw.addonManager.getConfig(__name__) or {}
+    # Backward compatibility mapping for old key names
+    rename_map = {
+        "explaination_field": "explanation_field",
+        "explaination_audio_field": "explanation_audio_field",
+        "elevenlabs_api_key": "elevenlabs_key"
+    }
+    for old_key, new_key in rename_map.items():
+        if old_key in user and new_key not in user:
+            user[new_key] = user.pop(old_key)
+    # Merge defaults and user overrides without blanking defaults
+    for key, defval in defaults.items():
+        if key in user:
+            if isinstance(defval, str):
+                # Use user value only if non-empty, else fallback to default
+                CONFIG[key] = user[key] if user[key] else defval
+            else:
+                CONFIG[key] = user[key]
+        else:
+            CONFIG[key] = defval
+    # Include any extra user-only keys
+    for key, val in user.items():
+        if key not in defaults:
+            CONFIG[key] = val
+    log_error(f"Final merged config: {CONFIG}")
+
 # Save configuration
 def save_config():
     mw.addonManager.writeConfig(__name__, CONFIG)
@@ -306,10 +338,14 @@ class ConfigDialog(QDialog):
     def load_settings(self):
         load_config()
         
-        # Set values based on config
-        if CONFIG["note_type"] in get_note_types():
+        # Set note type selection: use configured value or default to first available
+        note_types = get_note_types()
+        if CONFIG["note_type"] in note_types:
             self.note_type_combo.setCurrentText(CONFIG["note_type"])
-        
+        else:
+            if note_types:
+                self.note_type_combo.setCurrentIndex(0)
+                CONFIG["note_type"] = note_types[0]
         # Update field combos based on selected note type
         self.update_field_combos()
         
@@ -473,8 +509,8 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
         debug_write(f"Sentence field: {CONFIG['sentence_field']} = {sentence[:30]}...")
         debug_write(f"Definition field: {CONFIG['definition_field']} = {definition[:30]}...")
         
-        # Check if explanation already exists and we're not overriding
-        if not override_text:
+        # Skip only if neither text nor audio override is requested and both contents exist
+        if not override_text and not override_audio:
             debug_write("Checking if content already exists")
             explanation_exists = CONFIG["explanation_field"] in note and note[CONFIG["explanation_field"]].strip()
             # Check if audio field exists in the note before checking its content
