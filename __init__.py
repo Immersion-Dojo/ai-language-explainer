@@ -432,6 +432,8 @@ class ConfigDialog(QDialog):
 
     def test_voicevox_connection(self):
         """Test the connection to VOICEVOX and show detailed results"""
+        # Ensure latest engine selection is used
+        CONFIG["tts_engine"] = self.tts_engine_combo.currentText()
         try:
             # Try to connect to VOICEVOX with more detailed diagnostics
             is_running = check_voicevox_running()
