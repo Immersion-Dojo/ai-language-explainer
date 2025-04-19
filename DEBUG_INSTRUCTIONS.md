@@ -1,13 +1,13 @@
-# Debugging Instructions for GPT Explaination Generator
+# Debugging Instructions for GPT Language Explainer
 
-If you're experiencing crashes with the GPT Explaination Generator addon, follow these steps to collect debugging information:
+If you're experiencing crashes with the addon, follow these steps to collect debugging information:
 
 ## 1. Reproduce the Crash
 
 1. Make sure you're using version 1.3.1 or later of the addon
 2. Try to reproduce the crash by:
-   - Selecting a card in the browser and generating an explaination, or
-   - Clicking the "Generate GPT Explaination" button during review
+   - Selecting a card in the browser and generating an explanation, or
+   - Clicking the "Generate GPT Explainer" button during review
 
 ## 2. Collect Debug Logs
 
@@ -22,7 +22,7 @@ After Anki crashes, several debug log files will be created in the addon directo
 
 1. Open Anki
 2. Go to Tools > Add-ons
-3. Select "GPT Explaination Generator"
+3. Select "GPT Language Explainer"
 4. Click "View Files"
 
 This will open the addon directory where the log files are stored.

@@ -1,21 +1,21 @@
 # GPT Explainer for Anki
 
-This addon generates explainations for Japanese language learning cards using OpenAI's GPT-4o.
+This addon generates explanations for Japanese language learning cards using OpenAI's GPT-4o.
 
 ## Features
 
-- Automatically generates explainations for words based on their definition, example sentence, and context
-- Creates high-quality audio recordings of the explainations using VOICEVOX (requires VOICEVOX to be running)
+- Automatically generates explanations for words based on their definition, example sentence, and context
+- Creates high-quality audio recordings of the explanations using VOICEVOX (requires VOICEVOX to be running)
 - Works with any note type (configurable fields)
-- Adds a button during review to generate explainations on demand
+- Adds a button during review to generate explanations on demand
 
 ## Setup
 
 1. Install the addon through Anki's addon manager
-2. Go to Tools > GPT Explaination Settings
+2. Go to Tools > GPT Language Explainer Settings
 3. Select your note type (e.g., "Ray's Sentence Mining")
 4. Configure the input fields (word, sentence, definition, picture)
-5. Configure the output fields (explaination, explaination audio)
+5. Configure the output fields (explanation, explanation audio)
 6. Enter your OpenAI API key
 7. Customize the GPT prompt if desired
 8. Click Save
@@ -27,7 +27,7 @@ This addon now uses VOICEVOX for audio generation. VOICEVOX is a free Japanese t
 To use the audio generation feature:
 
 1. Download and install VOICEVOX from the [official website](https://voicevox.hiroshiba.jp/)
-2. Start VOICEVOX before generating explainations in Anki
+2. Start VOICEVOX before generating explanations in Anki
 3. VOICEVOX must be running in the background for audio generation to work
 4. The addon will automatically detect if VOICEVOX is running and use it for audio generation
 

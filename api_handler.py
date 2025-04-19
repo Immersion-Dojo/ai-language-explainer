@@ -83,7 +83,7 @@ def extract_image_from_html(html_content):
 
 def process_with_openai(api_key, prompt, picture_content=""):
     """
-    Process the prompt with OpenAI's API and return the explaination
+    Process the prompt with OpenAI's API and return the explanation
     
     Parameters:
     - api_key: OpenAI API key
@@ -91,7 +91,7 @@ def process_with_openai(api_key, prompt, picture_content=""):
     - picture_content: HTML content of the picture field
     
     Returns:
-    - str: The explaination from GPT
+    - str: The explanation from GPT
     """
     debug_log("=== PROCESS WITH OPENAI START ===")
     debug_log(f"Prompt length: {len(prompt)}")
@@ -135,11 +135,11 @@ def process_with_openai(api_key, prompt, picture_content=""):
             return None
             
         if 'choices' in response_data and len(response_data['choices']) > 0:
-            explaination = response_data['choices'][0]['message']['content']
-            debug_log(f"Received explanation, length: {len(explaination)}")
-            debug_log(f"Explanation first 100 chars: {explaination[:100]}...")
+            explanation = response_data['choices'][0]['message']['content']
+            debug_log(f"Received explanation, length: {len(explanation)}")
+            debug_log(f"Explanation first 100 chars: {explanation[:100]}...")
             debug_log("=== PROCESS WITH OPENAI COMPLETE ===")
-            return explaination
+            return explanation
         else:
             debug_log("Response missing 'choices' or empty choices array")
             debug_log(f"Response data: {str(response_data)[:500]}...")
@@ -206,26 +206,27 @@ def get_voicevox_install_instructions():
     """
     system = platform.system()
     if system == "Windows":
-        return "Download VOICEVOX from <a href='https://voicevox.hiroshiba.jp/'>https://voicevox.hiroshiba.jp/</a> and run it before generating audio."
+        return "Download VOICEVOX from https://voicevox.hiroshiba.jp/ and run it before generating audio."
     elif system == "Darwin":  # macOS
-        return "Download VOICEVOX from <a href='https://voicevox.hiroshiba.jp/'>https://voicevox.hiroshiba.jp/</a> and run it before generating audio. Make sure the VOICEVOX app is running and the API server is enabled in the settings."
+        return "Download VOICEVOX from https://voicevox.hiroshiba.jp/ and run it before generating audio. Make sure the VOICEVOX app is running and the API server is enabled in the settings."
     elif system == "Linux":
-        return "Install VOICEVOX using Docker or from source: <a href='https://github.com/VOICEVOX/voicevox_engine'>https://github.com/VOICEVOX/voicevox_engine</a>"
+        return "Install VOICEVOX using Docker or from source: https://github.com/VOICEVOX/voicevox_engine"
     else:
-        return "Visit <a href='https://voicevox.hiroshiba.jp/'>https://voicevox.hiroshiba.jp/</a> to download VOICEVOX for your platform."
+        return "Visit https://voicevox.hiroshiba.jp/ to download VOICEVOX for your platform."
 
 def generate_audio(api_key, text):
     """
-    Generate audio using VOICEVOX if available
-    
-    Parameters:
-    - api_key: OpenAI API key (not used for VOICEVOX)
-    - text: The text to convert to speech
-    
-    Returns:
-    - str: Path to the generated audio file or None if failed
+    Dispatch to the selected TTS engine and generate audio.
     """
-    debug_log("=== AUDIO GENERATION START ===")
+    from . import CONFIG  # import CONFIG here to avoid circular import
+    # Determine TTS engine from config (VoiceVox, ElevenLabs, OpenAI TTS)
+    engine = CONFIG.get("tts_engine", "VoiceVox")
+    if engine == "ElevenLabs":
+        return generate_audio_elevenlabs(CONFIG.get("elevenlabs_key", ""), text, CONFIG.get("elevenlabs_voice_id", ""))
+    if engine == "OpenAI TTS":
+        return generate_audio_openai_tts(api_key, text, CONFIG.get("openai_tts_voice", "alloy"))
+    # Fallback to VoiceVox
+    debug_log("=== AUDIO GENERATION START (VoiceVox) ===")
     debug_log(f"Text length: {len(text) if text else 'None'}")
     
     # Check for empty text
@@ -284,7 +285,7 @@ def generate_audio(api_key, text):
         # Create a unique filename based on content hash and timestamp
         file_hash = base64.b16encode(text.encode()).decode()[:16].lower()
         timestamp = int(time.time())
-        filename = f"explaination_audio_{file_hash}_{timestamp}.wav"
+        filename = f"explanation_audio_{file_hash}_{timestamp}.wav"
         file_path = os.path.join(media_dir, filename)
         debug_log(f"Target file path: {file_path}")
 
@@ -382,3 +383,76 @@ def generate_audio(api_key, text):
         return None
     finally:
         debug_log("=== AUDIO GENERATION END ===")
+
+# ElevenLabs TTS generation implementation
+def generate_audio_elevenlabs(api_key, text, voice_id):
+    """Generate audio using ElevenLabs TTS."""
+    debug_log("=== ELEVENLABS AUDIO GENERATION START ===")
+    if not api_key or not voice_id or not text:
+        debug_log("Missing api_key, voice_id, or text for ElevenLabs TTS")
+        return None
+    try:
+        url = f"https://api.elevenlabs.io/v2/voices/{voice_id}/text-to-speech"
+        headers = {
+            "xi-api-key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg"
+        }
+        payload = {"text": text}
+        debug_log(f"Sending ElevenLabs request: voice_id={voice_id}, text length={len(text)}")
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        debug_log(f"ElevenLabs status: {response.status_code}")
+        if response.status_code != 200:
+            debug_log(f"ElevenLabs error: {response.text[:200]}")
+            return None
+        # Save audio to media directory
+        media_dir = os.path.join(mw.pm.profileFolder(), "collection.media")
+        os.makedirs(media_dir, exist_ok=True)
+        timestamp = int(time.time())
+        filename = f"elevenlabs_tts_{voice_id}_{timestamp}.mp3"
+        file_path = os.path.join(media_dir, filename)
+        with open(file_path, "wb") as f:
+            f.write(response.content)
+        debug_log(f"Written ElevenLabs audio file: {file_path}")
+        return file_path
+    except Exception as e:
+        debug_log(f"Exception in ElevenLabs TTS: {e}")
+        return None
+    finally:
+        debug_log("=== ELEVENLABS AUDIO GENERATION END ===")
+
+# OpenAI TTS generation implementation
+def generate_audio_openai_tts(api_key, text, voice):
+    """Generate audio using OpenAI TTS endpoint."""
+    debug_log("=== OPENAI TTS GENERATION START ===")
+    if not api_key or not text or not voice:
+        debug_log("Missing api_key, voice, or text for OpenAI TTS")
+        return None
+    try:
+        url = "https://api.openai.com/v1/audio/speech"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {"model": "tts-1", "voice": voice, "input": text}
+        debug_log(f"Sending OpenAI TTS request: model=tts-1, voice={voice}, input length={len(text)}")
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        debug_log(f"OpenAI TTS status: {response.status_code}")
+        if response.status_code != 200:
+            debug_log(f"OpenAI TTS error: {response.text[:200]}")
+            return None
+        # Save audio to media directory
+        media_dir = os.path.join(mw.pm.profileFolder(), "collection.media")
+        os.makedirs(media_dir, exist_ok=True)
+        timestamp = int(time.time())
+        filename = f"openai_tts_{voice}_{timestamp}.mp3"
+        file_path = os.path.join(media_dir, filename)
+        with open(file_path, "wb") as f:
+            f.write(response.content)
+        debug_log(f"Written OpenAI TTS audio file: {file_path}")
+        return file_path
+    except Exception as e:
+        debug_log(f"Exception in OpenAI TTS: {e}")
+        return None
+    finally:
+        debug_log("=== OPENAI TTS GENERATION END ===")
