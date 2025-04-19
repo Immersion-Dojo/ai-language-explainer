@@ -261,6 +261,7 @@ class ConfigDialog(QDialog):
         # ElevenLabs subpanel
         self.panel_elevenlabs = QWidget()
         pel = QVBoxLayout(self.panel_elevenlabs)
+        # API Key input and validation
         eleven_key_layout = QHBoxLayout()
         eleven_key_layout.addWidget(QLabel("ElevenLabs API Key:"))
         self.elevenlabs_key_input = QLineEdit()
@@ -270,9 +271,12 @@ class ConfigDialog(QDialog):
         qconnect(self.elevenlabs_validate_btn.clicked, self.validate_elevenlabs_key)
         eleven_key_layout.addWidget(self.elevenlabs_validate_btn)
         pel.addLayout(eleven_key_layout)
-        pel.addWidget(QLabel("Voice:"))
-        self.elevenlabs_voice_combo = QComboBox()
-        pel.addWidget(self.elevenlabs_voice_combo)
+        # Free-form Voice ID input
+        voice_id_layout = QHBoxLayout()
+        voice_id_layout.addWidget(QLabel("Voice ID:"))
+        self.elevenlabs_voice_id_input = QLineEdit()
+        voice_id_layout.addWidget(self.elevenlabs_voice_id_input)
+        pel.addLayout(voice_id_layout)
         layout.addWidget(self.panel_elevenlabs)
 
         # OpenAI TTS subpanel
@@ -368,9 +372,7 @@ class ConfigDialog(QDialog):
         # Load TTS settings
         self.tts_engine_combo.setCurrentText(CONFIG["tts_engine"])
         self.elevenlabs_key_input.setText(CONFIG["elevenlabs_key"])
-        # Populate ElevenLabs voice if previously valid
-        if CONFIG["elevenlabs_voice_id"]:
-            self.elevenlabs_voice_combo.setCurrentText(CONFIG["elevenlabs_voice_id"])
+        self.elevenlabs_voice_id_input.setText(CONFIG["elevenlabs_voice_id"])
         self.openai_tts_combo.setCurrentText(CONFIG["openai_tts_voice"])
         self.update_tts_panels()
 
@@ -388,7 +390,7 @@ class ConfigDialog(QDialog):
         # Save TTS settings
         CONFIG["tts_engine"] = self.tts_engine_combo.currentText()
         CONFIG["elevenlabs_key"] = self.elevenlabs_key_input.text()
-        CONFIG["elevenlabs_voice_id"] = self.elevenlabs_voice_combo.currentText()
+        CONFIG["elevenlabs_voice_id"] = self.elevenlabs_voice_id_input.text()
         CONFIG["openai_tts_voice"] = self.openai_tts_combo.currentText()
         # Save to disk
         save_config()
@@ -402,7 +404,7 @@ class ConfigDialog(QDialog):
         self.panel_openai_tts.setVisible(engine == "OpenAI TTS")
 
     def validate_elevenlabs_key(self):
-        # Fetch the voices list from ElevenLabs
+        # Simple key validation for ElevenLabs
         key = self.elevenlabs_key_input.text().strip()
         if not key:
             QMessageBox.warning(self, "Missing Key", "Please enter your ElevenLabs API key.")
@@ -410,15 +412,9 @@ class ConfigDialog(QDialog):
         try:
             r = requests.get("https://api.elevenlabs.io/v2/voices", headers={"xi-api-key": key}, timeout=10)
             r.raise_for_status()
-            data = r.json().get("voices", [])
-            self.elevenlabs_voice_combo.clear()
-            for v in data:
-                name = v.get("name") or v.get("voice_id")
-                vid = v.get("voice_id")
-                self.elevenlabs_voice_combo.addItem(name, vid)
-            QMessageBox.information(self, "Voices Loaded", f"Loaded {len(data)} voices.")
+            QMessageBox.information(self, "Key Valid", "ElevenLabs API key is valid.")
         except Exception as e:
-            QMessageBox.critical(self, "Validation Failed", f"Could not load voices: {e}")
+            QMessageBox.critical(self, "Validation Failed", f"Key validation failed: {e}")
 
     def validate_openai_key(self):
         # Simple check for OpenAI key validity

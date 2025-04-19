@@ -392,13 +392,20 @@ def generate_audio_elevenlabs(api_key, text, voice_id):
         debug_log("Missing api_key, voice_id, or text for ElevenLabs TTS")
         return None
     try:
-        url = f"https://api.elevenlabs.io/v2/voices/{voice_id}/text-to-speech"
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
         headers = {
             "xi-api-key": api_key,
             "Content-Type": "application/json",
             "Accept": "audio/mpeg"
         }
-        payload = {"text": text}
+        payload = {
+            "text": text, 
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.5
+            }
+        }
         debug_log(f"Sending ElevenLabs request: voice_id={voice_id}, text length={len(text)}")
         response = requests.post(url, headers=headers, json=payload, timeout=30)
         debug_log(f"ElevenLabs status: {response.status_code}")
