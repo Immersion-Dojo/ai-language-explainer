@@ -13,6 +13,8 @@ from urllib.parse import unquote
 import subprocess
 import platform
 
+timeout_seconds = 60
+
 # Debug logging
 def debug_log(message):
     """Write debug messages to a separate log file"""
@@ -63,7 +65,7 @@ def process_with_openai(api_key, prompt, picture_content=""):
     
     try:
         debug_log("Sending request to OpenAI API...")
-        response = requests.post(OPENAI_CHAT_URL, headers=headers, json=data, timeout=30)
+        response = requests.post(OPENAI_CHAT_URL, headers=headers, json=data, timeout=timeout_seconds)
         debug_log(f"Response status code: {response.status_code}")
         
         if response.status_code != 200:
@@ -124,7 +126,7 @@ def check_voicevox_running():
         for url in test_urls:
             try:
                 debug_log(f"Trying to connect to VOICEVOX at {url}")
-                response = requests.get(url, timeout=1)
+                response = requests.get(url, timeout=5)
                 if response.status_code == 200:
                     debug_log(f"VOICEVOX is running at {url}, version: {response.text}")
                     return True
@@ -164,7 +166,7 @@ def check_aivisspeech_running(base_url="http://127.0.0.1:10101"):
             url = f"{base_url.rstrip('/')}{endpoint}"
             try:
                 debug_log(f"Trying to connect to AivisSpeech at {url}")
-                response = requests.get(url, timeout=2) # Increased timeout slightly
+                response = requests.get(url, timeout=5)
                 if response.status_code == 200:
                     debug_log(f"AivisSpeech is running at {url}. Status: {response.status_code}")
                     return True
@@ -206,7 +208,7 @@ def generate_audio_elevenlabs(api_key, text, voice_id):
             }
         }
         debug_log(f"Sending ElevenLabs request: voice_id={voice_id}, text length={len(text)}")
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
         debug_log(f"ElevenLabs status: {response.status_code}")
         if response.status_code != 200:
             debug_log(f"ElevenLabs error: {response.text[:200]}")
@@ -242,7 +244,7 @@ def generate_audio_openai_tts(api_key, text, voice):
         }
         payload = {"model": "tts-1", "voice": voice, "input": text}
         debug_log(f"Sending OpenAI TTS request: model=tts-1, voice={voice}, input length={len(text)}")
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
         debug_log(f"OpenAI TTS status: {response.status_code}")
         if response.status_code != 200:
             debug_log(f"OpenAI TTS error: {response.text[:200]}")
@@ -349,7 +351,7 @@ def generate_audio_aivisspeech(text, style_id=None, base_url="http://127.0.0.1:1
         query_url = f"{base_url.rstrip('/')}/audio_query"
         query_params = {"text": text, "speaker": style_id}
         debug_log(f"AivisSpeech: Requesting audio query from {query_url} with params: {query_params}")
-        response = requests.post(query_url, params=query_params, timeout=10)
+        response = requests.post(query_url, params=query_params, timeout=timeout_seconds)    
         response.raise_for_status()
         audio_query_data = response.json()
         debug_log("AivisSpeech: Received audio query.")
@@ -358,7 +360,7 @@ def generate_audio_aivisspeech(text, style_id=None, base_url="http://127.0.0.1:1
         synthesis_params = {"speaker": style_id}
         headers = {"Content-Type": "application/json"}
         debug_log(f"AivisSpeech: Requesting synthesis from {synthesis_url} with params: {synthesis_params}")
-        response = requests.post(synthesis_url, params=synthesis_params, json=audio_query_data, headers=headers, timeout=20)
+        response = requests.post(synthesis_url, params=synthesis_params, json=audio_query_data, headers=headers, timeout=timeout_seconds)
         response.raise_for_status()
         audio_data = response.content
         debug_log(f"AivisSpeech: Received audio data, length: {len(audio_data)} bytes.")
@@ -396,7 +398,7 @@ def generate_audio_aivisspeech(text, style_id=None, base_url="http://127.0.0.1:1
         debug_log("=== AUDIO GENERATION END (AivisSpeech) ===")
 
 # VoiceVox TTS generation
-def generate_audio_voicevox(text):
+def generate_audio_voicevox(text, speaker_id_override=None):
     """
     Generate audio using VOICEVOX engine.
 
@@ -461,17 +463,16 @@ def generate_audio_voicevox(text):
         file_path = os.path.join(media_dir, filename)
         debug_log(f"VOICEVOX: Target audio file path: {file_path}.")
 
-        # Default Speaker ID for VOICEVOX (e.g., Zundamon normal style)
-        # This can be made configurable if needed
-        speaker_id = 11 
-        timeout_seconds = 15 # Increased timeout slightly for synthesis
+        # Use speaker_id_override if provided, else use default
+        speaker_id = speaker_id_override if speaker_id_override is not None else 11 
+        timeout_seconds = 60 # Increased timeout slightly for synthesis
 
         # Step 1: Create an audio query
         # This step converts text to an intermediate representation used by VOICEVOX.
         debug_log("VOICEVOX: Creating audio query...")
         query_params = {'text': text, 'speaker': speaker_id}
         try:
-            query_response = requests.post('http://localhost:50021/audio_query', params=query_params, timeout=timeout_seconds)
+            query_response = requests.post('http://localhost:50021/audio_query', params=query_params)
             query_response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
             audio_query_json = query_response.json()
             debug_log("VOICEVOX: Audio query created successfully.")
@@ -530,7 +531,7 @@ def generate_audio_voicevox(text):
         debug_log("=== VOICEVOX AUDIO GENERATION END ===")
 
 # This is the main audio generation dispatcher
-def generate_audio(api_key, text, engine_override=None, style_id_override=None, save_to_collection_override=None):
+def generate_audio(api_key, text, engine_override=None, style_id_override=None, speaker_id_override=None, save_to_collection_override=None):
     """
     Dispatch to the selected TTS engine and generate audio.
     Can be overridden for specific cases like sample generation.
@@ -553,7 +554,7 @@ def generate_audio(api_key, text, engine_override=None, style_id_override=None, 
         # The generate_audio_aivisspeech function itself has a fallback if current_aivis_style_id is None
         return generate_audio_aivisspeech(text, style_id=current_aivis_style_id, save_to_collection=save_to_collection)
     if engine == "VoiceVox":
-        return generate_audio_voicevox(text)
+        return generate_audio_voicevox(text, speaker_id_override)
     
     # If engine is not recognized or no specific handler, log and return None
     debug_log(f"Unknown or unhandled TTS engine: {engine}. Cannot generate audio.")

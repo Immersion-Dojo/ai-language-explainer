@@ -14,8 +14,6 @@ If you're experiencing crashes with the addon, follow these steps to collect deb
 After Anki crashes, several debug log files will be created in the addon directory:
 
 - `debug_log.txt` - Contains detailed logs from the audio generation process
-- `process_debug.txt` - Contains detailed logs from the note processing
-- `error_log.txt` - Contains general error information
 - `crash_log.txt` - Contains system information
 
 ## 3. Find the Addon Directory

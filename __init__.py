@@ -99,6 +99,7 @@ CONFIG = {
     "elevenlabs_voice_id": "",
     "openai_tts_voice": "alloy",
     "aivisspeech_style_id": None,
+    "voicevox_style_id": None,
     "disable_audio": False,      
     "hide_button": False      
 }
@@ -293,6 +294,23 @@ class ConfigDialog(QDialog):
         self.voicevox_test_btn = QPushButton("Test VoiceVox Connection")
         qconnect(self.voicevox_test_btn.clicked, self.test_voicevox_connection)
         pv.addWidget(self.voicevox_test_btn)
+
+        # Load Available Voices for VoiceVox
+        self.voicevox_load_voices_btn = QPushButton("Load Available Voices")
+        qconnect(self.voicevox_load_voices_btn.clicked, self.load_voicevox_voices_ui)
+        pv.addWidget(self.voicevox_load_voices_btn)
+
+        # Voices Table for VoiceVox
+        self.voicevox_voices_table = QTableWidget()
+        self.voicevox_voices_table.setColumnCount(4)
+        self.voicevox_voices_table.setHorizontalHeaderLabels(["Speaker", "Style", "Play Sample", "Use as Default"])
+        self.voicevox_voices_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.voicevox_voices_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.voicevox_voices_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        self.voicevox_voices_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self.voicevox_voices_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        pv.addWidget(self.voicevox_voices_table)
+
         layout.addWidget(self.panel_voicevox)
 
         # ElevenLabs subpanel
@@ -440,14 +458,14 @@ class ConfigDialog(QDialog):
         # Load Text Generation settings
         self.openai_key.setText(CONFIG["openai_key"])
         self.gpt_prompt_input.setPlainText(CONFIG["gpt_prompt"])
+        
         # Load TTS settings
         self.tts_engine_combo.setCurrentText(CONFIG["tts_engine"])
         self.elevenlabs_key_input.setText(CONFIG["elevenlabs_key"])
         self.elevenlabs_voice_id_input.setText(CONFIG["elevenlabs_voice_id"])
         self.openai_tts_combo.setCurrentText(CONFIG["openai_tts_voice"])
-        
-        # Load AivisSpeech settings if any (e.g., selected style_id)
-        # self.aivisspeech_style_id = CONFIG.get("aivisspeech_style_id") # We'll handle selection later
+        self.aivisspeech_style_id = CONFIG.get("aivisspeech_style_id")
+        self.voicevox_style_id = CONFIG.get("voicevox_style_id")
 
         # Load UI preference settings
         self.disable_audio_checkbox.setChecked(CONFIG.get("disable_audio", False))
@@ -463,17 +481,16 @@ class ConfigDialog(QDialog):
         CONFIG["definition_field"] = self.definition_field_combo.currentText()
         CONFIG["explanation_field"] = self.explanation_field_combo.currentText()
         CONFIG["explanation_audio_field"] = self.explanation_audio_field_combo.currentText()
+
         # Save Text Generation settings
         CONFIG["openai_key"] = self.openai_key.text()
         CONFIG["gpt_prompt"] = self.gpt_prompt_input.toPlainText()
+
         # Save TTS settings
         CONFIG["tts_engine"] = self.tts_engine_combo.currentText()
         CONFIG["elevenlabs_key"] = self.elevenlabs_key_input.text()
         CONFIG["elevenlabs_voice_id"] = self.elevenlabs_voice_id_input.text()
         CONFIG["openai_tts_voice"] = self.openai_tts_combo.currentText()
-        
-        # Save AivisSpeech settings if any (e.g., selected style_id)
-        # self.aivisspeech_style_id = CONFIG.get("aivisspeech_style_id") # We'll handle selection later
 
         # Save UI preference settings
         CONFIG["disable_audio"] = self.disable_audio_checkbox.isChecked()
@@ -681,6 +698,84 @@ class ConfigDialog(QDialog):
             )
             debug_log("Failed to generate or find audio sample file.")
 
+    def load_voicevox_voices_ui(self):
+        debug_log("Loading VoiceVox voices into UI...")
+        try:
+            response = requests.get("http://127.0.0.1:50021/speakers", timeout=5)
+            response.raise_for_status()
+            speakers = response.json()
+        except Exception as e:
+            QMessageBox.warning(self, "Load Voices Failed",
+                                f"Could not retrieve voices from VoiceVox: {e}")
+            return
+
+        # Build list of (speaker, style, style_id)
+        voices = []
+        for sp in speakers:
+            name = sp.get("name", "Unknown")
+            for st in sp.get("styles", []):
+                voices.append((name, st.get("name", "Default"), st.get("id")))
+
+        self.voicevox_voices_table.setRowCount(len(voices))
+        for row, (name, style_name, style_id) in enumerate(voices):
+            self.voicevox_voices_table.setItem(row, 0, QTableWidgetItem(name))
+            self.voicevox_voices_table.setItem(row, 1, QTableWidgetItem(style_name))
+
+            # Play button
+            play_btn = QPushButton("Play")
+            qconnect(play_btn.clicked, lambda _, sid=style_id: self.play_voicevox_sample_ui(sid))
+            self.voicevox_voices_table.setCellWidget(row, 2, play_btn)
+
+            # Set Default button
+            default_btn = QPushButton("Set Default")
+            default_btn.setProperty("style_id", style_id)
+            qconnect(default_btn.clicked, lambda _, sid=style_id: self.set_voicevox_default_style(sid))
+            self.voicevox_voices_table.setCellWidget(row, 3, default_btn)
+
+        # Highlight existing default style
+        current = CONFIG.get("voicevox_style_id")
+        if current is not None:
+            for r in range(self.voicevox_voices_table.rowCount()):
+                btn = self.voicevox_voices_table.cellWidget(r, 3)
+                if btn and btn.property("style_id") == current:
+                    self.voicevox_voices_table.selectRow(r)
+                    break
+
+    def play_voicevox_sample_ui(self, speaker_id):
+        sample_text = "こんにちは。日本へようこそ。"
+        debug_log(f"Playing VoiceVox sample for speaker_id {speaker_id} with text: '{sample_text}'")
+        # Generate and save into collection.media
+        result = generate_audio(
+            api_key=None,
+            text=sample_text,
+            engine_override="VoiceVox",
+            save_to_collection_override=True
+        )
+        if result:
+            # result may be a sound tag or a file path
+            if result.startswith("[sound:") and result.endswith("]"):
+                filename = result[7:-1]
+            else:
+                filename = os.path.basename(result)
+            debug_log(f"Sample audio saved as: {filename}, playing now.")
+            try:
+                from aqt.sound import play
+                play(filename)
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "Playback Error",
+                    f"Could not play audio sample: {e}"
+                )
+                debug_log(f"Error playing VoiceVox sample from media folder: {e}")
+        else:
+            QMessageBox.critical(
+                self,
+                "Sample Generation Failed",
+                "Could not generate audio sample from VoiceVox."
+            )
+            debug_log("Failed to generate VoiceVox sample.")
+
     def set_aivisspeech_default_style(self, style_id):
         self.selected_aivisspeech_style_id = style_id
         CONFIG["aivisspeech_style_id"] = style_id # Also update live CONFIG
@@ -694,14 +789,17 @@ class ConfigDialog(QDialog):
                 # Optionally, change button text to "Current Default" or disable it
                 break
         debug_log(f"AivisSpeech default style ID set to: {style_id}")
-        
-    def cleanup_temp_file(self, filepath):
-        try:
-            if os.path.exists(filepath) and "gpt_explainer_temp_sample" in filepath: # Double check it's our temp file
-                os.remove(filepath)
-                debug_log(f"Cleaned up temp sample file: {filepath}")
-        except Exception as e:
-            debug_log(f"Error cleaning up temp file {filepath}: {str(e)}")
+
+    def set_voicevox_default_style(self, style_id):
+        CONFIG["voicevox_style_id"] = style_id
+        QMessageBox.information(self, "Default Style Set",
+                                f"VoiceVox style ID {style_id} has been set as the default.")
+        self.voicevox_voices_table.clearSelection()
+        for i in range(self.voicevox_voices_table.rowCount()):
+            btn = self.voicevox_voices_table.cellWidget(i, 3)
+            if btn and btn.property("style_id") == style_id:
+                self.voicevox_voices_table.selectRow(i)
+                break
 
 # Process a single note with debug mode
 def process_note_debug(note, override_text, override_audio, progress_callback=None):
@@ -810,10 +908,19 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
                 debug_log(f"Audio field found: {CONFIG['explanation_audio_field']}")
                 if override_audio or not note[CONFIG["explanation_audio_field"]].strip():
                     try:
+                        # Update progress callback
+                        if progress_callback:
+                            progress_callback(f"Generating audio with {CONFIG['tts_engine']}...")
+                        # Generate audio
                         debug_log(f"Calling generate_audio with engine: {CONFIG['tts_engine']}")
-                        # Pass AivisSpeech style ID if configured
                         aivis_style_id = CONFIG.get("aivisspeech_style_id") if CONFIG['tts_engine'] == 'AivisSpeech' else None
-                        audio_path = generate_audio(CONFIG.get("openai_key", ""), explanation, style_id_override=aivis_style_id)
+                        voicevox_speaker_id = CONFIG.get("voicevox_default_speaker_id") if CONFIG['tts_engine'] == 'VoiceVox' else None
+                        audio_path = generate_audio(
+                            CONFIG.get("openai_key", ""),
+                            explanation,
+                            style_id_override=aivis_style_id,
+                            speaker_id_override=voicevox_speaker_id
+                        )
                         if audio_path:
                             debug_log(f"Audio generated: {audio_path}")
                             audio_path_result[0] = audio_path
@@ -1230,10 +1337,8 @@ def on_js_message(handled, message, context):
     cmd = None
     if isinstance(message, tuple):
         cmd = message[0]
-        debug_log(f"Message is tuple, cmd: {cmd}")
     else:
         cmd = message
-        debug_log(f"Message is string, cmd: {cmd}")
     
     # Check if this is our command
     if cmd == "gpt_explanation":
@@ -1256,7 +1361,6 @@ def on_js_message(handled, message, context):
             # If we can't determine version, return a tuple which works in Anki 25
             return (True, None)
     
-    debug_log(f"Not our command, returning handled: {handled}")
     return handled
 
 # Set up menu items
