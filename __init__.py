@@ -101,7 +101,9 @@ CONFIG = {
     "tts_engine": "OpenAI TTS",
     "elevenlabs_key": "",
     "elevenlabs_voice_id": "",
-    "openai_tts_voice": "alloy"
+    "openai_tts_voice": "alloy",
+    "disable_audio": False,      
+    "hide_button": False      
 }
 
 # Load configuration
@@ -221,6 +223,15 @@ class ConfigDialog(QDialog):
         layout.addWidget(self.field_verification_label)
 
         # =====================
+        # UI Preferences
+        # =====================
+        layout.addWidget(QLabel("<b>UI Preferences</b>"))
+        
+        # Checkbox for hiding the button
+        self.hide_button_checkbox = QCheckBox("Hide 'Generate explanation' button during review")
+        layout.addWidget(self.hide_button_checkbox)
+        
+        # =====================
         # Text Generation
         # =====================
         layout.addWidget(QLabel("<b>Text Generation</b>"))
@@ -242,6 +253,12 @@ class ConfigDialog(QDialog):
         # TTS Generation
         # =====================
         layout.addWidget(QLabel("<b>TTS Generation</b>"))
+        
+        # Checkbox for disabling audio generation
+        self.disable_audio_checkbox = QCheckBox("Disable audio generation")
+        layout.addWidget(self.disable_audio_checkbox)
+        qconnect(self.disable_audio_checkbox.toggled, self.update_tts_panels)
+        
         engine_layout = QHBoxLayout()
         engine_layout.addWidget(QLabel("Engine:"))
         self.tts_engine_combo = QComboBox()
@@ -374,6 +391,11 @@ class ConfigDialog(QDialog):
         self.elevenlabs_key_input.setText(CONFIG["elevenlabs_key"])
         self.elevenlabs_voice_id_input.setText(CONFIG["elevenlabs_voice_id"])
         self.openai_tts_combo.setCurrentText(CONFIG["openai_tts_voice"])
+        
+        # Load UI preference settings
+        self.disable_audio_checkbox.setChecked(CONFIG.get("disable_audio", False))
+        self.hide_button_checkbox.setChecked(CONFIG.get("hide_button", False))
+        
         self.update_tts_panels()
 
     def save_and_close(self):
@@ -392,6 +414,11 @@ class ConfigDialog(QDialog):
         CONFIG["elevenlabs_key"] = self.elevenlabs_key_input.text()
         CONFIG["elevenlabs_voice_id"] = self.elevenlabs_voice_id_input.text()
         CONFIG["openai_tts_voice"] = self.openai_tts_combo.currentText()
+        
+        # Save UI preference settings
+        CONFIG["disable_audio"] = self.disable_audio_checkbox.isChecked()
+        CONFIG["hide_button"] = self.hide_button_checkbox.isChecked()
+        
         # Save to disk
         save_config()
         self.accept()
@@ -399,9 +426,16 @@ class ConfigDialog(QDialog):
     def update_tts_panels(self):
         # Show the panel matching the selected TTS engine only
         engine = self.tts_engine_combo.currentText()
-        self.panel_voicevox.setVisible(engine == "VoiceVox")
-        self.panel_elevenlabs.setVisible(engine == "ElevenLabs")
-        self.panel_openai_tts.setVisible(engine == "OpenAI TTS")
+        
+        # If audio is disabled, hide all TTS panels
+        if self.disable_audio_checkbox.isChecked():
+            self.panel_voicevox.setVisible(False)
+            self.panel_elevenlabs.setVisible(False)
+            self.panel_openai_tts.setVisible(False)
+        else:
+            self.panel_voicevox.setVisible(engine == "VoiceVox")
+            self.panel_elevenlabs.setVisible(engine == "ElevenLabs")
+            self.panel_openai_tts.setVisible(engine == "OpenAI TTS")
 
     def validate_elevenlabs_key(self):
         # Simple key validation for ElevenLabs
@@ -578,39 +612,48 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
         # Audio generation using the selected TTS engine
         debug_write("Starting audio generation step")
         audio_path_result = [None]
-        # Only generate if the audio field exists and override_audio is True or the field is empty
-        if CONFIG["explanation_audio_field"] in note:
-            debug_write(f"Audio field found: {CONFIG['explanation_audio_field']}")
-            if override_audio or not note[CONFIG["explanation_audio_field"]].strip():
-                try:
-                    debug_write(f"Calling generate_audio with engine: {CONFIG['tts_engine']}")
-                    audio_path = generate_audio(CONFIG.get("openai_key", ""), explanation)
-                    if audio_path:
-                        debug_write(f"Audio generated: {audio_path}")
-                        audio_path_result[0] = audio_path
-                except Exception as e:
-                    debug_write(f"Error during audio generation: {str(e)}")
-                # Save result or placeholder
+        
+        # Check if audio generation is disabled in settings
+        if CONFIG.get("disable_audio", False):
+            debug_write("Audio generation is disabled in settings, skipping")
+            # Set placeholder message for audio field if it exists
+            if CONFIG["explanation_audio_field"] in note:
+                note[CONFIG["explanation_audio_field"]] = "[Audio generation disabled in settings]"
+                debug_write("Added placeholder to audio field (disabled in settings)")
+        else:
+            # Only generate if the audio field exists and override_audio is True or the field is empty
+            if CONFIG["explanation_audio_field"] in note:
+                debug_write(f"Audio field found: {CONFIG['explanation_audio_field']}")
+                if override_audio or not note[CONFIG["explanation_audio_field"]].strip():
+                    try:
+                        debug_write(f"Calling generate_audio with engine: {CONFIG['tts_engine']}")
+                        audio_path = generate_audio(CONFIG.get("openai_key", ""), explanation)
+                        if audio_path:
+                            debug_write(f"Audio generated: {audio_path}")
+                            audio_path_result[0] = audio_path
+                    except Exception as e:
+                        debug_write(f"Error during audio generation: {str(e)}")
+                    # Save result or placeholder
+                    if audio_path_result[0]:
+                        audio_filename = os.path.basename(audio_path_result[0])
+                        note[CONFIG["explanation_audio_field"]] = f"[sound:{audio_filename}]"
+                        debug_write("Audio reference saved to note")
+                    else:
+                        note[CONFIG["explanation_audio_field"]] = "[Audio generation skipped or failed]"
+                        debug_write("Audio generation skipped or failed, placeholder saved")
+            else:
+                debug_write(f"Audio field not found in note: {CONFIG['explanation_audio_field']}")
+        
+            # Also try the "explanationAudio" field (with correct spelling) if it exists
+            if "explanationAudio" in note and CONFIG["explanation_audio_field"] != "explanationAudio":
+                debug_write("Checking for 'explanationAudio' field (correct spelling)")
                 if audio_path_result[0]:
                     audio_filename = os.path.basename(audio_path_result[0])
-                    note[CONFIG["explanation_audio_field"]] = f"[sound:{audio_filename}]"
-                    debug_write("Audio reference saved to note")
+                    note["explanationAudio"] = f"[sound:{audio_filename}]"
+                    debug_write("Audio reference saved to explanationAudio field (correct spelling)")
                 else:
-                    note[CONFIG["explanation_audio_field"]] = "[Audio generation skipped or failed]"
-                    debug_write("Audio generation skipped or failed, placeholder saved")
-        else:
-            debug_write(f"Audio field not found in note: {CONFIG['explanation_audio_field']}")
-        
-        # Also try the "explanationAudio" field (with correct spelling) if it exists
-        if "explanationAudio" in note and CONFIG["explanation_audio_field"] != "explanationAudio":
-            debug_write("Checking for 'explanationAudio' field (correct spelling)")
-            if audio_path_result[0]:
-                audio_filename = os.path.basename(audio_path_result[0])
-                note["explanationAudio"] = f"[sound:{audio_filename}]"
-                debug_write("Audio reference saved to explanationAudio field (correct spelling)")
-            else:
-                note["explanationAudio"] = "[Audio generation skipped or failed]"
-                debug_write("Audio generation was skipped or failed, setting placeholder text")
+                    note["explanationAudio"] = "[Audio generation skipped or failed]"
+                    debug_write("Audio generation was skipped or failed, setting placeholder text")
         
         # Save changes - wrap in try/except to catch any issues
         try:
@@ -694,9 +737,18 @@ def process_current_card():
         
         # Ask separate override questions
         override_text = askUser("Do you want to override the explanation field?", title="GPT Explainer", defaultno=False)
-        override_audio = askUser("Do you want to override the explanation audio field?", title="GPT Explainer", defaultno=False)
+        
+        # Only ask about audio if it's not disabled in settings
+        override_audio = False
+        if not CONFIG.get("disable_audio", False):
+            # Ask if user wants to overwrite the audio field
+            override_audio = askUser("Do you want to override the explanation audio field?", title="GPT Explainer", defaultno=False)
+        else:
+            log_error("Audio generation disabled in settings, skipping audio override prompt")
+        
         # Store audio override flag to skip audio generation in backend
         CONFIG["override_audio"] = override_audio
+        
         # Proceed directly to voicevox status check
         progress.setValue(30)
         progress.setLabelText("Checking VOICEVOX status...")
@@ -948,6 +1000,11 @@ def on_card_shown(card=None):
         # Log for debugging
         log_error(f"on_card_shown called with card: {card}")
         
+        # Check if button is hidden in settings
+        if CONFIG.get("hide_button", False):
+            log_error("Button is hidden in settings, skipping button addition")
+            return
+        
         # Only add the button when the answer is shown
         if mw.state != "review":
             log_error("Not in review state, skipping button addition")
@@ -1055,8 +1112,15 @@ def batch_process_notes():
     
     # Ask if user wants to overwrite text only
     override_text = askUser("Do you want to override the explanation field?", title="GPT Explainer", defaultno=False)
-    # Ask if user wants to overwrite the voice field
-    override_audio = askUser("Do you want to override the explanation audio field?", title="GPT Explainer", defaultno=False)
+    
+    # Only ask about audio if it's not disabled in settings
+    override_audio = False
+    if not CONFIG.get("disable_audio", False):
+        # Ask if user wants to overwrite the voice field
+        override_audio = askUser("Do you want to override the explanation audio field?", title="GPT Explainer", defaultno=False)
+    else:
+        log_error("Audio generation disabled in settings, skipping audio override prompt")
+    
     # Store audio override flag to skip audio generation in backend
     CONFIG["override_audio"] = override_audio
     
