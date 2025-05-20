@@ -1,7 +1,7 @@
 # File: __init__.py
 from aqt import mw, gui_hooks
 from aqt.utils import qconnect, showInfo, tooltip, askUser
-from aqt.qt import QAction, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QLineEdit, QTextEdit, QProgressDialog, QCheckBox, QMessageBox, QApplication, Qt, QTimer, QMenu, QWidget
+from aqt.qt import QAction, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QLineEdit, QTextEdit, QProgressDialog, QCheckBox, QMessageBox, QApplication, Qt, QTimer, QMenu, QWidget, QTabWidget
 from anki.notes import Note
 import os
 import json
@@ -173,17 +173,23 @@ class ConfigDialog(QDialog):
     def __init__(self, parent=None):
         super(ConfigDialog, self).__init__(parent)
         self.setWindowTitle("GPT Language Explainer Settings")
+        self.setMinimumWidth(500) # Set a minimum width for the dialog
         self.setup_ui()
         self.load_settings()
 
     def setup_ui(self):
-        layout = QVBoxLayout()
-        self.setLayout(layout)
+        main_layout = QVBoxLayout()
+        self.setLayout(main_layout)
 
-        # =====================
-        # Note & Field Configuration
-        # =====================
+        tab_widget = QTabWidget()
+        main_layout.addWidget(tab_widget)
+
+        # Tab 1: Note & Field Configuration
+        note_field_tab = QWidget()
+        layout = QVBoxLayout(note_field_tab) # Use 'layout' for this tab's content
+
         layout.addWidget(QLabel("<b>Note & Field Configuration</b>"))
+         
         # Note Type selection
         note_type_layout = QHBoxLayout()
         note_type_layout.addWidget(QLabel("Note Type:"))
@@ -192,22 +198,26 @@ class ConfigDialog(QDialog):
         qconnect(self.note_type_combo.currentIndexChanged, self.update_field_combos)
         note_type_layout.addWidget(self.note_type_combo)
         layout.addLayout(note_type_layout)
+
         # Field selection combos
+        layout.addWidget(QLabel("<b>Input Fields</b>")) # Added heading
         word_field_layout = QHBoxLayout()
-        word_field_layout.addWidget(QLabel("Word Field:"))
+        word_field_layout.addWidget(QLabel("Word Field: {word}"))
         self.word_field_combo = QComboBox()
         word_field_layout.addWidget(self.word_field_combo)
         layout.addLayout(word_field_layout)
         sentence_field_layout = QHBoxLayout()
-        sentence_field_layout.addWidget(QLabel("Sentence Field:"))
+        sentence_field_layout.addWidget(QLabel("Sentence Field: {sentence}"))
         self.sentence_field_combo = QComboBox()
         sentence_field_layout.addWidget(self.sentence_field_combo)
         layout.addLayout(sentence_field_layout)
         definition_field_layout = QHBoxLayout()
-        definition_field_layout.addWidget(QLabel("Definition Field:"))
+        definition_field_layout.addWidget(QLabel("Definition Field: {definition}"))
         self.definition_field_combo = QComboBox()
         definition_field_layout.addWidget(self.definition_field_combo)
         layout.addLayout(definition_field_layout)
+        
+        layout.addWidget(QLabel("<b>Output Fields</b>")) # Added heading
         explanation_field_layout = QHBoxLayout()
         explanation_field_layout.addWidget(QLabel("Explanation Field:"))
         self.explanation_field_combo = QComboBox()
@@ -221,19 +231,25 @@ class ConfigDialog(QDialog):
         # Verification label for field selection
         self.field_verification_label = QLabel()
         layout.addWidget(self.field_verification_label)
+        layout.addStretch() # Add stretch to push content to the top
+        tab_widget.addTab(note_field_tab, "Note & Fields")
 
-        # =====================
-        # UI Preferences
-        # =====================
+        # Tab 2: UI Preferences
+        ui_prefs_tab = QWidget()
+        layout = QVBoxLayout(ui_prefs_tab) # Reuse 'layout' for this tab's content
+
         layout.addWidget(QLabel("<b>UI Preferences</b>"))
         
         # Checkbox for hiding the button
         self.hide_button_checkbox = QCheckBox("Hide 'Generate explanation' button during review")
         layout.addWidget(self.hide_button_checkbox)
+        layout.addStretch() # Add stretch
+        tab_widget.addTab(ui_prefs_tab, "UI Preferences")
         
-        # =====================
-        # Text Generation
-        # =====================
+        # Tab 3: Text Generation
+        text_gen_tab = QWidget()
+        layout = QVBoxLayout(text_gen_tab) # Reuse 'layout' for this tab's content
+
         layout.addWidget(QLabel("<b>Text Generation</b>"))
         text_key_layout = QHBoxLayout()
         text_key_layout.addWidget(QLabel("OpenAI API Key:"))
@@ -246,12 +262,15 @@ class ConfigDialog(QDialog):
         layout.addLayout(text_key_layout)
         layout.addWidget(QLabel("GPT Prompt:"))
         self.gpt_prompt_input = QTextEdit()
-        self.gpt_prompt_input.setFixedHeight(80)
+        self.gpt_prompt_input.setFixedHeight(150) # Increased height
         layout.addWidget(self.gpt_prompt_input)
+        layout.addStretch() # Add stretch
+        tab_widget.addTab(text_gen_tab, "Text Generation")
 
-        # =====================
-        # TTS Generation
-        # =====================
+        # Tab 4: TTS Generation
+        tts_gen_tab = QWidget()
+        layout = QVBoxLayout(tts_gen_tab) # Reuse 'layout' for this tab's content
+
         layout.addWidget(QLabel("<b>TTS Generation</b>"))
         
         # Checkbox for disabling audio generation
@@ -259,17 +278,21 @@ class ConfigDialog(QDialog):
         layout.addWidget(self.disable_audio_checkbox)
         qconnect(self.disable_audio_checkbox.toggled, self.update_tts_panels)
         
-        engine_layout = QHBoxLayout()
-        engine_layout.addWidget(QLabel("Engine:"))
+        # Create a container widget for the engine selection
+        self.engine_selection_widget = QWidget()
+        engine_layout_container = QHBoxLayout(self.engine_selection_widget) # Renamed to avoid conflict
+        engine_layout_container.setContentsMargins(0, 0, 0, 0) # Remove extra margins
+        engine_layout_container.addWidget(QLabel("Engine:"))
         self.tts_engine_combo = QComboBox()
         self.tts_engine_combo.addItems(["VoiceVox","ElevenLabs","OpenAI TTS"])
         qconnect(self.tts_engine_combo.currentIndexChanged, self.update_tts_panels)
-        engine_layout.addWidget(self.tts_engine_combo)
-        layout.addLayout(engine_layout)
+        engine_layout_container.addWidget(self.tts_engine_combo)
+        layout.addWidget(self.engine_selection_widget) # Add the container widget
 
         # VoiceVox subpanel
         self.panel_voicevox = QWidget()
         pv = QVBoxLayout(self.panel_voicevox)
+        pv.setContentsMargins(0,0,0,0)
         self.voicevox_test_btn = QPushButton("Test VoiceVox Connection")
         qconnect(self.voicevox_test_btn.clicked, self.test_voicevox_connection)
         pv.addWidget(self.voicevox_test_btn)
@@ -278,6 +301,7 @@ class ConfigDialog(QDialog):
         # ElevenLabs subpanel
         self.panel_elevenlabs = QWidget()
         pel = QVBoxLayout(self.panel_elevenlabs)
+        pel.setContentsMargins(0,0,0,0)
         # API Key input and validation
         eleven_key_layout = QHBoxLayout()
         eleven_key_layout.addWidget(QLabel("ElevenLabs API Key:"))
@@ -299,19 +323,22 @@ class ConfigDialog(QDialog):
         # OpenAI TTS subpanel
         self.panel_openai_tts = QWidget()
         poi = QVBoxLayout(self.panel_openai_tts)
+        poi.setContentsMargins(0,0,0,0)
         openai_tts_layout = QHBoxLayout()
         openai_tts_layout.addWidget(QLabel("OpenAI TTS Voice:"))
         self.openai_tts_combo = QComboBox()
         self.openai_tts_combo.addItems(["alloy","ash","ballad","coral","echo","fable","nova","onyx","sage","shimmer"])
         openai_tts_layout.addWidget(self.openai_tts_combo)
         self.openai_tts_validate_btn = QPushButton("Validate Key")
-        qconnect(self.openai_tts_validate_btn.clicked, self.validate_openai_key)
+        qconnect(self.openai_tts_validate_btn.clicked, self.validate_openai_key) # Reconnect OpenAI key validation
         openai_tts_layout.addWidget(self.openai_tts_validate_btn)
         poi.addLayout(openai_tts_layout)
         layout.addWidget(self.panel_openai_tts)
-        self.update_tts_panels()
+        self.update_tts_panels() # Call once to set initial visibility
+        layout.addStretch() # Add stretch
+        tab_widget.addTab(tts_gen_tab, "TTS Generation")
 
-        # Buttons
+        # Buttons (common to all tabs, so placed outside the tab_widget)
         button_layout = QHBoxLayout()
         save_button = QPushButton("Save")
         cancel_button = QPushButton("Cancel")
@@ -319,7 +346,7 @@ class ConfigDialog(QDialog):
         qconnect(cancel_button.clicked, self.reject)
         button_layout.addWidget(save_button)
         button_layout.addWidget(cancel_button)
-        layout.addLayout(button_layout)
+        main_layout.addLayout(button_layout) # Add buttons to the main_layout
 
     def update_field_combos(self):
         note_type = self.note_type_combo.currentText()
@@ -432,7 +459,9 @@ class ConfigDialog(QDialog):
             self.panel_voicevox.setVisible(False)
             self.panel_elevenlabs.setVisible(False)
             self.panel_openai_tts.setVisible(False)
+            self.engine_selection_widget.setVisible(False) # Hide engine selection
         else:
+            self.engine_selection_widget.setVisible(True) # Show engine selection
             self.panel_voicevox.setVisible(engine == "VoiceVox")
             self.panel_elevenlabs.setVisible(engine == "ElevenLabs")
             self.panel_openai_tts.setVisible(engine == "OpenAI TTS")
