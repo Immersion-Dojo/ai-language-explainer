@@ -13,9 +13,6 @@ from urllib.parse import unquote
 import subprocess
 import platform
 
-# OpenAI API Endpoints
-OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
-
 # Debug logging
 def debug_log(message):
     """Write debug messages to a separate log file"""
@@ -28,59 +25,10 @@ def debug_log(message):
     except Exception as e:
         print(f"Failed to write to debug log: {e}")
 
-def extract_image_from_html(html_content):
-    """
-    Extract image URL from HTML content using regex
-    
-    Parameters:
-    - html_content: HTML content containing an image
-    
-    Returns:
-    - str: Base64 encoded image or None if failed
-    """
-    try:
-        # Use regex to find the img tag and extract the src attribute
-        # This pattern looks for src attribute in various formats (with " or ' or no quotes)
-        match = re.search(r'<img[^>]+src\s*=\s*(?:["\'](.*?)["\']|(.*?)(?:\s|>))', html_content)
-        
-        if not match:
-            return None
-            
-        # Get the matched src (either from group 1 or group 2)
-        src = match.group(1) if match.group(1) else match.group(2)
-        
-        if not src:
-            return None
-            
-        # Handle different image formats
-        if src.startswith('data:image'):
-            # Already a base64 image
-            base64_data = src.split(',')[1]
-            return base64_data
-        elif src.startswith('http'):
-            # Remote image URL
-            response = urlopen(src)
-            image_data = response.read()
-            return base64.b64encode(image_data).decode('utf-8')
-        else:
-            # Local file in Anki media collection
-            # Remove any URL encoding
-            src = unquote(src)
-            # Remove any leading path like "collection.media/"
-            src = os.path.basename(src)
-            # Get the full path in the media directory
-            media_dir = os.path.join(mw.pm.profileFolder(), "collection.media")
-            image_path = os.path.join(media_dir, src)
-            
-            if os.path.exists(image_path):
-                with open(image_path, 'rb') as img_file:
-                    image_data = img_file.read()
-                    return base64.b64encode(image_data).decode('utf-8')
-    except Exception as e:
-        print(f"Error extracting image: {e}")
-    
-    return None
+# OpenAI API Endpoints
+OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
+# OpenAI API
 def process_with_openai(api_key, prompt, picture_content=""):
     """
     Process the prompt with OpenAI's API and return the explanation
@@ -88,13 +36,12 @@ def process_with_openai(api_key, prompt, picture_content=""):
     Parameters:
     - api_key: OpenAI API key
     - prompt: The prompt to send to GPT
-    - picture_content: HTML content of the picture field
     
     Returns:
     - str: The explanation from GPT
     """
     debug_log("=== PROCESS WITH OPENAI START ===")
-    debug_log(f"Prompt length: {len(prompt)}")
+    debug_log(f"Prompt: {prompt}")
     
     headers = {
         "Content-Type": "application/json",
@@ -103,7 +50,7 @@ def process_with_openai(api_key, prompt, picture_content=""):
     
     # Prepare the messages
     messages = [
-        {"role": "system", "content": "You are a helpful assistant for Japanese language learners."},
+        {"role": "system", "content": "You are a helpful assistant for language learners."},
         {"role": "user", "content": prompt}
     ]
     
@@ -197,194 +144,46 @@ def check_voicevox_running():
         debug_log(f"Unexpected error in check_voicevox_running: {str(e)}")
         return False
 
-def get_voicevox_install_instructions():
+def check_aivisspeech_running(base_url="http://127.0.0.1:10101"):
     """
-    Get platform-specific instructions for installing VOICEVOX
+    Check if AivisSpeech server is running
     
+    Parameters:
+    - base_url: The base URL for the AivisSpeech engine (e.g., http://127.0.0.1:10101)
+
     Returns:
-    - str: Installation instructions
+    - bool: True if AivisSpeech server is running, False otherwise
     """
-    system = platform.system()
-    if system == "Windows":
-        return "Download VOICEVOX from https://voicevox.hiroshiba.jp/ and run it before generating audio."
-    elif system == "Darwin":  # macOS
-        return "Download VOICEVOX from https://voicevox.hiroshiba.jp/ and run it before generating audio. Make sure the VOICEVOX app is running and the API server is enabled in the settings."
-    elif system == "Linux":
-        return "Install VOICEVOX using Docker or from source: https://github.com/VOICEVOX/voicevox_engine"
-    else:
-        return "Visit https://voicevox.hiroshiba.jp/ to download VOICEVOX for your platform."
-
-def generate_audio(api_key, text):
-    """
-    Dispatch to the selected TTS engine and generate audio.
-    """
-    from . import CONFIG  # import CONFIG here to avoid circular import
-    # Determine TTS engine from config (VoiceVox, ElevenLabs, OpenAI TTS)
-    engine = CONFIG.get("tts_engine", "VoiceVox")
-    if engine == "ElevenLabs":
-        return generate_audio_elevenlabs(CONFIG.get("elevenlabs_key", ""), text, CONFIG.get("elevenlabs_voice_id", ""))
-    if engine == "OpenAI TTS":
-        return generate_audio_openai_tts(api_key, text, CONFIG.get("openai_tts_voice", "alloy"))
-    # Fallback to VoiceVox
-    debug_log("=== AUDIO GENERATION START (VoiceVox) ===")
-    debug_log(f"Text length: {len(text) if text else 'None'}")
-    
-    # Check for empty text
-    if not text or len(text.strip()) == 0:
-        debug_log("Empty text provided, cannot generate audio")
-        return None
-    
-    # Limit text length to prevent errors (VOICEVOX has limits)
-    max_text_length = 500
-    if len(text) > max_text_length:
-        debug_log(f"Text too long ({len(text)} chars), truncating to {max_text_length} chars")
-        text = text[:max_text_length] + "..."
-    
     try:
-        # Check if VOICEVOX is running with a very short timeout
-        debug_log("Doing a quick check if VOICEVOX is accessible")
-        try:
-            response = requests.get("http://localhost:50021/version", timeout=1)
-            if response.status_code != 200:
-                debug_log(f"VOICEVOX not accessible: status code {response.status_code}")
-                return None
-            debug_log(f"VOICEVOX is accessible, version: {response.text}")
-        except Exception as e:
-            debug_log(f"VOICEVOX initial check failed: {str(e)}")
-            return None
+        debug_log(f"Checking if AivisSpeech is running at {base_url}...")
+        # AivisSpeech uses /speakers endpoint, similar to VoiceVox's /version or /speakers
+        # We can also check /docs as per their documentation
+        test_endpoints = ["/speakers", "/docs"]
         
-        # Get the media directory path
-        try:
-            media_dir = os.path.join(mw.pm.profileFolder(), "collection.media")
-            debug_log(f"Media directory: {media_dir}")
-            
-            # Check if media directory exists and is writable
-            if not os.path.exists(media_dir):
-                debug_log(f"Media directory does not exist: {media_dir}")
-                try:
-                    os.makedirs(media_dir, exist_ok=True)
-                    debug_log(f"Created media directory: {media_dir}")
-                except Exception as e:
-                    debug_log(f"Failed to create media directory: {str(e)}")
-                    return None
-                    
-            # Verify directory is writable with a test file
-            test_file_path = os.path.join(media_dir, "voicevox_test.tmp")
+        for endpoint in test_endpoints:
+            url = f"{base_url.rstrip('/')}{endpoint}"
             try:
-                with open(test_file_path, 'w') as f:
-                    f.write("test")
-                os.remove(test_file_path)
-                debug_log("Media directory is writable")
+                debug_log(f"Trying to connect to AivisSpeech at {url}")
+                response = requests.get(url, timeout=2) # Increased timeout slightly
+                if response.status_code == 200:
+                    debug_log(f"AivisSpeech is running at {url}. Status: {response.status_code}")
+                    return True
+                else:
+                    debug_log(f"AivisSpeech at {url} returned non-200 status code: {response.status_code}")
+            except requests.exceptions.ConnectionError:
+                debug_log(f"AivisSpeech connection error at {url} - server not running or wrong port.")
+            except requests.exceptions.Timeout:
+                debug_log(f"AivisSpeech connection timeout at {url}")
             except Exception as e:
-                debug_log(f"Media directory is not writable: {str(e)}")
-                return None
-        except Exception as e:
-            debug_log(f"Error accessing media directory: {str(e)}")
-            return None
+                debug_log(f"Error checking AivisSpeech at {url}: {str(e)}")
         
-        # Create a unique filename based on content hash and timestamp
-        file_hash = base64.b16encode(text.encode()).decode()[:16].lower()
-        timestamp = int(time.time())
-        filename = f"explanation_audio_{file_hash}_{timestamp}.wav"
-        file_path = os.path.join(media_dir, filename)
-        debug_log(f"Target file path: {file_path}")
-
-        # Speaker ID
-        speaker_id = 11  # Adjust if needed
-
-        # Set timeout for requests to prevent hanging
-        timeout_seconds = 10  # Shorter timeout
-        
-        # 1. Create audio query
-        debug_log("Creating audio query")
-        query_params = {'text': text, 'speaker': speaker_id}
-        try:
-            debug_log(f"Sending audio query request with text: {text[:50]}...")
-            query_response = requests.post('http://localhost:50021/audio_query', params=query_params, timeout=timeout_seconds)
-            debug_log(f"Audio query response status: {query_response.status_code}")
-            debug_log(f"Audio query response content type: {query_response.headers.get('Content-Type', 'unknown')}")
-        except requests.exceptions.Timeout:
-            debug_log("Timeout while creating audio query")
-            return None
-        except Exception as e:
-            debug_log(f"Error in audio query request: {str(e)}")
-            debug_log(f"Stack trace: {traceback.format_exc()}")
-            return None
-        
-        if query_response.status_code != 200:
-            debug_log(f"Error in audio_query: {query_response.text[:200]}")
-            return None
-        
-        try:
-            query_content = query_response.text
-            debug_log(f"Audio query response content (first 50 chars): {query_content[:50]}")
-            query = query_response.json()
-            debug_log("Successfully parsed audio query JSON response")
-        except Exception as e:
-            debug_log(f"Error parsing audio query response: {str(e)}")
-            debug_log(f"Response content: {query_response.text[:200]}...")
-            return None
-        
-        # 2. Generate audio data
-        debug_log("Generating audio data")
-        synthesis_params = {'speaker': speaker_id}
-        try:
-            debug_log("Sending synthesis request...")
-            synthesis_response = requests.post('http://localhost:50021/synthesis', params=synthesis_params, json=query, timeout=timeout_seconds)
-            debug_log(f"Synthesis response status: {synthesis_response.status_code}")
-            debug_log(f"Synthesis response content type: {synthesis_response.headers.get('Content-Type', 'unknown')}")
-            debug_log(f"Synthesis response content length: {len(synthesis_response.content)}")
-        except requests.exceptions.Timeout:
-            debug_log("Timeout while generating audio data")
-            return None
-        except Exception as e:
-            debug_log(f"Error in synthesis request: {str(e)}")
-            debug_log(f"Stack trace: {traceback.format_exc()}")
-            return None
-        
-        if synthesis_response.status_code != 200:
-            debug_log(f"Error in synthesis: {synthesis_response.text[:200]}")
-            return None
-            
-        if len(synthesis_response.content) < 100:  # Check if response is too small
-            debug_log(f"Synthesis response too small, might not be audio: {len(synthesis_response.content)} bytes")
-            debug_log(f"Response content (first 100 bytes): {synthesis_response.content[:100]}")
-            return None
-        
-        # Save the audio file
-        debug_log(f"Writing to file: {file_path}")
-        try:
-            with open(file_path, 'wb') as f:
-                f.write(synthesis_response.content)
-                debug_log(f"Wrote {len(synthesis_response.content)} bytes to file")
-            
-            # Verify the file was written correctly
-            if os.path.exists(file_path):
-                file_size = os.path.getsize(file_path)
-                debug_log(f"File successfully written, size: {file_size} bytes")
-                
-                if file_size < 100:  # Check if file is too small
-                    debug_log("File is too small, might not be valid audio")
-                    return None
-                    
-                debug_log("=== AUDIO GENERATION COMPLETE ===")
-                return file_path
-            else:
-                debug_log("File doesn't exist after writing")
-                return None
-        except Exception as e:
-            debug_log(f"Error writing audio file: {str(e)}")
-            debug_log(f"Stack trace: {traceback.format_exc()}")
-            return None
-            
+        debug_log(f"All AivisSpeech connection attempts to {base_url} failed")
+        return False
     except Exception as e:
-        debug_log(f"Unexpected error in generate_audio: {str(e)}")
-        debug_log(f"Stack trace: {traceback.format_exc()}")
-        return None
-    finally:
-        debug_log("=== AUDIO GENERATION END ===")
+        debug_log(f"Unexpected error in check_aivisspeech_running: {str(e)}")
+        return False
 
-# ElevenLabs TTS generation implementation
+# ElevenLabs TTS generation
 def generate_audio_elevenlabs(api_key, text, voice_id):
     """Generate audio using ElevenLabs TTS."""
     debug_log("=== ELEVENLABS AUDIO GENERATION START ===")
@@ -428,7 +227,7 @@ def generate_audio_elevenlabs(api_key, text, voice_id):
     finally:
         debug_log("=== ELEVENLABS AUDIO GENERATION END ===")
 
-# OpenAI TTS generation implementation
+# OpenAI TTS generation
 def generate_audio_openai_tts(api_key, text, voice):
     """Generate audio using OpenAI TTS endpoint."""
     debug_log("=== OPENAI TTS GENERATION START ===")
@@ -463,3 +262,299 @@ def generate_audio_openai_tts(api_key, text, voice):
         return None
     finally:
         debug_log("=== OPENAI TTS GENERATION END ===")
+
+# AivisSpeech TTS voices
+def get_aivisspeech_voices(base_url="http://127.0.0.1:10101"):
+    """
+    Fetch available voices (speakers and styles) from AivisSpeech engine.
+
+    Parameters:
+    - base_url: The base URL for the AivisSpeech engine.
+
+    Returns:
+    - list: A list of voice dictionaries, e.g., 
+            [{'speaker_name': 'Speaker A', 'style_name': 'Normal', 'style_id': 123}, ...]
+            Returns None if an error occurs.
+    """
+    debug_log(f"Fetching AivisSpeech voices from {base_url}...")
+    voices_list = []
+    try:
+        speakers_url = f"{base_url.rstrip('/')}/speakers"
+        response = requests.get(speakers_url, timeout=5)
+        response.raise_for_status() # Raise an exception for HTTP errors
+        speakers_data = response.json()
+        
+        if not isinstance(speakers_data, list):
+            debug_log(f"AivisSpeech /speakers endpoint did not return a list. Data: {speakers_data}")
+            return None
+
+        for speaker in speakers_data:
+            speaker_name = speaker.get('name', 'Unknown Speaker')
+            if 'styles' in speaker and isinstance(speaker['styles'], list):
+                for style in speaker['styles']:
+                    style_name = style.get('name', 'Default Style')
+                    style_id = style.get('id')
+                    if style_id is not None:
+                        voices_list.append({
+                            'speaker_name': speaker_name,
+                            'style_name': style_name,
+                            'style_id': style_id
+                        })
+        debug_log(f"Found {len(voices_list)} AivisSpeech voices.")
+        return voices_list
+    except requests.exceptions.Timeout:
+        debug_log(f"AivisSpeech: Timeout fetching voices from {base_url}")
+        return None
+    except requests.exceptions.RequestException as e:
+        debug_log(f"AivisSpeech: Request error fetching voices: {str(e)}")
+        return None
+    except json.JSONDecodeError as e:
+        debug_log(f"AivisSpeech: Error decoding JSON from /speakers: {str(e)}")
+        return None
+    except Exception as e:
+        debug_log(f"AivisSpeech: Unexpected error fetching voices: {str(e)}")
+        return None
+
+# AivisSpeech TTS generation
+def generate_audio_aivisspeech(text, style_id=None, base_url="http://127.0.0.1:10101", save_to_collection=True):
+    debug_log(f"=== AUDIO GENERATION START (AivisSpeech at {base_url}) ===")
+    debug_log(f"Text length: {len(text) if text else 'None'}, Style ID: {style_id}, Save to collection: {save_to_collection}")
+
+    if not text or len(text.strip()) == 0:
+        debug_log("Empty text provided for AivisSpeech, cannot generate audio")
+        return None
+
+    max_text_length = 500
+    if len(text) > max_text_length:
+        debug_log(f"AivisSpeech: Text too long ({len(text)} chars), truncating to {max_text_length} chars")
+        text = text[:max_text_length] + "..."
+
+    try:
+        if not check_aivisspeech_running(base_url):
+            debug_log(f"AivisSpeech engine not running or not accessible at {base_url}. Aborting audio generation.")
+            return None
+
+        if style_id is None:
+            # Fallback to fetching the first available style_id if not provided
+            # This might be needed for the main generation if no voice is explicitly configured yet
+            debug_log("AivisSpeech: style_id not provided, attempting to find a default.")
+            voices = get_aivisspeech_voices(base_url)
+            if voices and len(voices) > 0:
+                style_id = voices[0]['style_id']
+                debug_log(f"AivisSpeech: Using first available style_id: {style_id}")
+            else:
+                debug_log("AivisSpeech: Could not find any voices to determine a default style_id.")
+                return None
+        
+        query_url = f"{base_url.rstrip('/')}/audio_query"
+        query_params = {"text": text, "speaker": style_id}
+        debug_log(f"AivisSpeech: Requesting audio query from {query_url} with params: {query_params}")
+        response = requests.post(query_url, params=query_params, timeout=10)
+        response.raise_for_status()
+        audio_query_data = response.json()
+        debug_log("AivisSpeech: Received audio query.")
+
+        synthesis_url = f"{base_url.rstrip('/')}/synthesis"
+        synthesis_params = {"speaker": style_id}
+        headers = {"Content-Type": "application/json"}
+        debug_log(f"AivisSpeech: Requesting synthesis from {synthesis_url} with params: {synthesis_params}")
+        response = requests.post(synthesis_url, params=synthesis_params, json=audio_query_data, headers=headers, timeout=20)
+        response.raise_for_status()
+        audio_data = response.content
+        debug_log(f"AivisSpeech: Received audio data, length: {len(audio_data)} bytes.")
+
+        if save_to_collection:
+            timestamp = int(time.time())
+            filename = f"gpt_explainer_aivis_{style_id}_{timestamp}.wav"
+            media_dir = os.path.join(mw.pm.profileFolder(), "collection.media")
+            if not os.path.exists(media_dir):
+                os.makedirs(media_dir)
+            filepath = os.path.join(media_dir, filename)
+            with open(filepath, 'wb') as f:
+                f.write(audio_data)
+            debug_log(f"AivisSpeech: Audio saved to collection: {filepath}")
+            return f"[sound:{filename}]" # Return Anki sound tag for collection items
+        else:
+            import tempfile
+            temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            temp_file.write(audio_data)
+            temp_file.close()
+            debug_log(f"AivisSpeech: Audio saved to temporary file: {temp_file.name}")
+            return temp_file.name # Return direct filepath for temporary samples
+
+    except requests.exceptions.Timeout:
+        debug_log(f"AivisSpeech: Timeout during API call to {base_url}")
+        return None
+    except requests.exceptions.RequestException as e:
+        debug_log(f"AivisSpeech: Request error during API call to {base_url}: {str(e)}")
+        return None
+    except Exception as e:
+        debug_log(f"AivisSpeech: Unexpected error during audio generation: {str(e)}")
+        debug_log(f"Stack trace for AivisSpeech error: {traceback.format_exc()}")
+        return None
+    finally:
+        debug_log("=== AUDIO GENERATION END (AivisSpeech) ===")
+
+# VoiceVox TTS generation
+def generate_audio_voicevox(text):
+    """
+    Generate audio using VOICEVOX engine.
+
+    Parameters:
+    - text (str): The text to synthesize.
+
+    Returns:
+    - str|None: The file path to the generated .wav audio file, or None if generation failed.
+    """
+    debug_log("=== VOICEVOX AUDIO GENERATION START ===")
+    if not text or len(text.strip()) == 0:
+        debug_log("VOICEVOX: Empty text provided, cannot generate audio.")
+        return None
+
+    # Limit text length as VOICEVOX has input limits
+    max_text_length = 500  # This limit can be adjusted based on VOICEVOX's capabilities
+    if len(text) > max_text_length:
+        debug_log(f"VOICEVOX: Text too long ({len(text)} chars), truncating to {max_text_length} chars.")
+        text = text[:max_text_length] + "..."
+
+    try:
+        # Quick accessibility check for the VOICEVOX server
+        debug_log("VOICEVOX: Performing quick accessibility check.")
+        try:
+            response = requests.get("http://localhost:50021/version", timeout=1) # Short timeout for check
+            if response.status_code != 200:
+                debug_log(f"VOICEVOX: Server not accessible or non-200 status: {response.status_code}.")
+                return None
+            debug_log(f"VOICEVOX: Server accessible, version: {response.text}.")
+        except Exception as e:
+            debug_log(f"VOICEVOX: Initial server check failed: {str(e)}.")
+            return None
+        
+        # Determine the media directory for saving the audio file
+        media_dir = os.path.join(mw.pm.profileFolder(), "collection.media")
+        debug_log(f"VOICEVOX: Media directory set to: {media_dir}.")
+
+        # Ensure the media directory exists and is writable
+        if not os.path.exists(media_dir):
+            debug_log(f"VOICEVOX: Media directory does not exist, attempting to create: {media_dir}.")
+            try:
+                os.makedirs(media_dir, exist_ok=True)
+                debug_log(f"VOICEVOX: Media directory created: {media_dir}.")
+            except Exception as e:
+                debug_log(f"VOICEVOX: Failed to create media directory: {str(e)}.")
+                return None
+        
+        # Verify writability (optional, but good for diagnostics)
+        # test_file_path = os.path.join(media_dir, "voicevox_writability_test.tmp")
+        # try:
+        #     with open(test_file_path, 'w') as f: f.write("test")
+        #     os.remove(test_file_path)
+        #     debug_log("VOICEVOX: Media directory confirmed writable.")
+        # except Exception as e:
+        #     debug_log(f"VOICEVOX: Media directory not writable: {str(e)}.")
+        #     return None
+
+        # Generate a unique filename using a hash of the text and a timestamp
+        file_hash = base64.b16encode(text.encode('utf-8')).decode('utf-8')[:16].lower()
+        timestamp = int(time.time())
+        filename = f"voicevox_audio_{file_hash}_{timestamp}.wav"
+        file_path = os.path.join(media_dir, filename)
+        debug_log(f"VOICEVOX: Target audio file path: {file_path}.")
+
+        # Default Speaker ID for VOICEVOX (e.g., Zundamon normal style)
+        # This can be made configurable if needed
+        speaker_id = 11 
+        timeout_seconds = 15 # Increased timeout slightly for synthesis
+
+        # Step 1: Create an audio query
+        # This step converts text to an intermediate representation used by VOICEVOX.
+        debug_log("VOICEVOX: Creating audio query...")
+        query_params = {'text': text, 'speaker': speaker_id}
+        try:
+            query_response = requests.post('http://localhost:50021/audio_query', params=query_params, timeout=timeout_seconds)
+            query_response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+            audio_query_json = query_response.json()
+            debug_log("VOICEVOX: Audio query created successfully.")
+        except requests.exceptions.Timeout:
+            debug_log("VOICEVOX: Timeout during audio query creation.")
+            return None
+        except requests.exceptions.RequestException as e:
+            debug_log(f"VOICEVOX: Error during audio query request: {str(e)}.")
+            return None
+        except json.JSONDecodeError as e:
+            debug_log(f"VOICEVOX: Error decoding audio query JSON response: {str(e)}. Response text: {query_response.text[:200]}")
+            return None
+
+        # Step 2: Synthesize audio from the query
+        # This step takes the intermediate representation and generates the actual WAV audio data.
+        debug_log("VOICEVOX: Synthesizing audio data...")
+        synthesis_params = {'speaker': speaker_id}
+        try:
+            synthesis_response = requests.post('http://localhost:50021/synthesis', params=synthesis_params, json=audio_query_json, timeout=timeout_seconds)
+            synthesis_response.raise_for_status()
+            audio_data = synthesis_response.content
+            debug_log(f"VOICEVOX: Audio data synthesized, size: {len(audio_data)} bytes.")
+        except requests.exceptions.Timeout:
+            debug_log("VOICEVOX: Timeout during audio synthesis.")
+            return None
+        except requests.exceptions.RequestException as e:
+            debug_log(f"VOICEVOX: Error during audio synthesis request: {str(e)}.")
+            return None
+
+        if len(audio_data) < 100: # Basic check for valid audio data
+            debug_log(f"VOICEVOX: Synthesized audio data is too small ({len(audio_data)} bytes), likely an error.")
+            return None
+
+        # Step 3: Save the audio data to a file
+        debug_log(f"VOICEVOX: Saving audio data to file: {file_path}")
+        try:
+            with open(file_path, 'wb') as f:
+                f.write(audio_data)
+            
+            # Verify file creation and size
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 100:
+                debug_log(f"VOICEVOX: Audio file successfully saved: {file_path}, size: {os.path.getsize(file_path)} bytes.")
+                return file_path # Return the full path to the audio file
+            else:
+                debug_log("VOICEVOX: Audio file not found or too small after attempting to save.")
+                return None
+        except Exception as e:
+            debug_log(f"VOICEVOX: Error writing audio file: {str(e)}.")
+            return None
+            
+    except Exception as e:
+        debug_log(f"VOICEVOX: Unexpected error in generate_audio_voicevox: {str(e)}.")
+        debug_log(f"Stack trace for VOICEVOX error: {traceback.format_exc()}")
+        return None
+    finally:
+        debug_log("=== VOICEVOX AUDIO GENERATION END ===")
+
+# This is the main audio generation dispatcher
+def generate_audio(api_key, text, engine_override=None, style_id_override=None, save_to_collection_override=None):
+    """
+    Dispatch to the selected TTS engine and generate audio.
+    Can be overridden for specific cases like sample generation.
+    """
+    from . import CONFIG  # import CONFIG here to avoid circular import
+    
+    engine = engine_override if engine_override else CONFIG.get("tts_engine", "VoiceVox")
+    save_to_collection = save_to_collection_override if save_to_collection_override is not None else True
+    
+    # Debug log the parameters being used for this call
+    debug_log(f"generate_audio called with: engine='{engine}', save_to_collection={save_to_collection}, style_id_override={style_id_override}, text_length={len(text) if text else 0}")
+
+    if engine == "ElevenLabs":
+        return generate_audio_elevenlabs(CONFIG.get("elevenlabs_key", ""), text, CONFIG.get("elevenlabs_voice_id", ""))
+    if engine == "OpenAI TTS":
+        return generate_audio_openai_tts(api_key, text, CONFIG.get("openai_tts_voice", "alloy"))
+    if engine == "AivisSpeech":
+        # Use style_id_override if provided (for samples), else use configured default, else fallback in generate_audio_aivisspeech
+        current_aivis_style_id = style_id_override if style_id_override is not None else CONFIG.get("aivisspeech_style_id")
+        # The generate_audio_aivisspeech function itself has a fallback if current_aivis_style_id is None
+        return generate_audio_aivisspeech(text, style_id=current_aivis_style_id, save_to_collection=save_to_collection)
+    if engine == "VoiceVox":
+        return generate_audio_voicevox(text)
+    
+    # If engine is not recognized or no specific handler, log and return None
+    debug_log(f"Unknown or unhandled TTS engine: {engine}. Cannot generate audio.")
+    return None
