@@ -57,7 +57,7 @@ def process_with_openai(api_key, prompt, picture_content=""):
     ]
     
     data = {
-        "model": "gpt-4o",
+        "model": "gpt-4.1-2025-04-14",
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": 500
