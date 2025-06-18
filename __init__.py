@@ -609,7 +609,7 @@ class ConfigDialog(QDialog):
                     "Failed to connect to AivisSpeech engine on http://127.0.0.1:10101.\n\n"
                     "Please ensure AivisSpeech Engine is running and accessible.")
         except Exception as e:
-            debug_log("Error during AivisSpeech connection test", e)
+            debug_log(f"Error during AivisSpeech connection test: {str(e)}")
             QMessageBox.critical(self, "Test Error", 
                 f"An error occurred while testing AivisSpeech connection:\n\n{str(e)}")
 
@@ -676,10 +676,10 @@ class ConfigDialog(QDialog):
 
         # 2) We expect a string like "[sound:voice_filename.wav]"
         if sound_tag and sound_tag.startswith("[sound:") and sound_tag.endswith("]"):
-            filename = sound_tag[7:-1]  # strip off “[sound:” and “]”
+            filename = sound_tag[7:-1]  # strip off "[" and "]"
             debug_log(f"Sample audio saved to collection.media as: {filename}, playing now.")
             try:
-                # 3) Play via Anki’s built-in sound player
+                # 3) Play via Anki's built-in sound player
                 from aqt.sound import play
                 play(filename)
             except Exception as e:
@@ -752,11 +752,12 @@ class ConfigDialog(QDialog):
             save_to_collection_override=True
         )
         if result:
-            # result may be a sound tag or a file path
+            # result may be a sound tag or a direct file path
             if result.startswith("[sound:") and result.endswith("]"):
-                filename = result[7:-1]
+                filename = result[7:-1]  # strip off the sound tag brackets
             else:
                 filename = os.path.basename(result)
+
             debug_log(f"Sample audio saved as: {filename}, playing now.")
             try:
                 from aqt.sound import play
@@ -840,11 +841,17 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
         
         # Process with OpenAI
         debug_log("Preparing prompt for OpenAI")
-        prompt = CONFIG["gpt_prompt"].format(
-            word=word,
-            sentence=sentence,
-            definition=definition
-        )
+        try:
+            prompt = CONFIG["gpt_prompt"].format(
+                word=word,
+                sentence=sentence,
+                definition=definition
+            )
+        except KeyError as e:
+            debug_log(f"KeyError in prompt formatting: {str(e)}")
+            debug_log(f"Prompt template: {CONFIG['gpt_prompt']}")
+            debug_log(f"Available variables: word='{word}', sentence='{sentence}', definition='{definition}'")
+            return False, f"Error in prompt template: missing placeholder {str(e)}"
         
         debug_log("Calling process_with_openai")
         try:
@@ -862,7 +869,6 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
                 progress_callback("Received explanation from OpenAI")
         except Exception as e:
             debug_log(f"Error in process_with_openai: {str(e)}")
-            debug_log("Error in process_with_openai", e)
             return False, f"Error calling OpenAI API: {str(e)}"
         
         # Save explanation to note
@@ -876,8 +882,7 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
                     if progress_callback:
                         progress_callback("explanation saved to note")
                 except Exception as e:
-                    debug_log(f"Error setting explanation field: {str(e)}")
-                    debug_log(f"Error setting explanation field: {CONFIG['explanation_field']}", e)
+                    debug_log(f"Error setting explanation field: {CONFIG['explanation_field']}: {str(e)}")
                     return False, f"Error saving explanation to note: {str(e)}"
         
         # Also try the "explanation" field (with correct spelling) if it exists
@@ -928,8 +933,13 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
                         debug_log(f"Error during audio generation: {str(e)}")
                     # Save result or placeholder
                     if audio_path_result[0]:
-                        audio_filename = os.path.basename(audio_path_result[0])
-                        note[CONFIG["explanation_audio_field"]] = f"[sound:{audio_filename}]"
+                        # If the returned value is already an Anki sound tag, use it as-is,
+                        # otherwise wrap the filename in one. This prevents double "[sound:" tags
+                        if str(audio_path_result[0]).startswith("[sound:") and str(audio_path_result[0]).endswith("]"):
+                            note[CONFIG["explanation_audio_field"]] = audio_path_result[0]
+                        else:
+                            audio_filename = os.path.basename(audio_path_result[0])
+                            note[CONFIG["explanation_audio_field"]] = f"[sound:{audio_filename}]"
                         debug_log("Audio reference saved to note")
                     else:
                         note[CONFIG["explanation_audio_field"]] = "[Audio generation skipped or failed]"
@@ -941,8 +951,13 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
             if "explanationAudio" in note and CONFIG["explanation_audio_field"] != "explanationAudio":
                 debug_log("Checking for 'explanationAudio' field (correct spelling)")
                 if audio_path_result[0]:
-                    audio_filename = os.path.basename(audio_path_result[0])
-                    note["explanationAudio"] = f"[sound:{audio_filename}]"
+                    # If the returned value is already an Anki sound tag, use it as-is,
+                    # otherwise wrap the filename in one. This prevents double "[sound:" tags
+                    if str(audio_path_result[0]).startswith("[sound:") and str(audio_path_result[0]).endswith("]"):
+                        note["explanationAudio"] = audio_path_result[0]
+                    else:
+                        audio_filename = os.path.basename(audio_path_result[0])
+                        note["explanationAudio"] = f"[sound:{audio_filename}]"
                     debug_log("Audio reference saved to explanationAudio field (correct spelling)")
                 else:
                     note["explanationAudio"] = "[Audio generation skipped or failed]"
@@ -962,7 +977,6 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
                 progress_callback("Changes saved successfully")
         except Exception as e:
             debug_log(f"Error in note.flush(): {str(e)}")
-            debug_log("Error in note.flush()", e)
             return False, f"Error saving changes to note: {str(e)}"
             
         debug_log("=== PROCESS NOTE COMPLETED SUCCESSFULLY ===")
@@ -970,7 +984,6 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
     except Exception as e:
         debug_log(f"Unexpected error in process_note: {str(e)}")
         debug_log(f"Stack trace: {traceback.format_exc()}")
-        debug_log("Unexpected error in process_note", e)
         return False, f"Unexpected error: {str(e)}"
 
 # Replace the original process_note function with the debug version
@@ -1156,7 +1169,7 @@ def process_current_card():
                 processing_completed[0] = True
                 
                 error_msg = str(e)
-                debug_log("Error in process_with_progress", e)
+                debug_log(f"Error in process_with_progress: {str(e)}")
                 mw.taskman.run_on_main(lambda: show_error(error_msg, progress))
         
         # Function to handle the result on the main thread
@@ -1171,7 +1184,7 @@ def process_current_card():
                         progress.cancel()
                         tooltip("explanation generated successfully!")
                     except Exception as e:
-                        debug_log("Error in card.load()", e)
+                        debug_log(f"Error in card.load(): {str(e)}")
                         progress.cancel()
                         tooltip("explanation generated, but failed to refresh card.")
                 else:
@@ -1212,7 +1225,7 @@ def process_current_card():
         threading.Thread(target=process_with_progress).start()
         
     except Exception as e:
-        debug_log("Unexpected error in process_current_card", e)
+        debug_log(f"Unexpected error in process_current_card: {str(e)}")
         tooltip("An error occurred. Check the error log for details.")
 
 # Add the button to the card during review
