@@ -12,6 +12,7 @@ import subprocess
 import traceback
 import atexit
 import platform
+import webbrowser
 from aqt.browser import Browser
 import requests
 
@@ -258,7 +259,7 @@ class ConfigDialog(QDialog):
         qconnect(self.text_key_validate_btn.clicked, self.validate_openai_key)
         text_key_layout.addWidget(self.text_key_validate_btn)
         layout.addLayout(text_key_layout)
-        layout.addWidget(QLabel("GPT Prompt:"))
+        layout.addWidget(QLabel("Prompt:"))
         self.gpt_prompt_input = QTextEdit()
         self.gpt_prompt_input.setFixedHeight(150) # Increased height
         layout.addWidget(self.gpt_prompt_input)
@@ -382,6 +383,46 @@ class ConfigDialog(QDialog):
         self.update_tts_panels() # Call once to set initial visibility
         layout.addStretch() # Add stretch
         tab_widget.addTab(tts_gen_tab, "TTS Generation")
+
+        # Promotional section (appears on all tabs)
+        promo_widget = QWidget()
+        promo_layout = QVBoxLayout(promo_widget)
+        promo_layout.setContentsMargins(10, 8, 10, 5)
+        
+        # Add minimal spacing
+        promo_layout.addWidget(QLabel())  # Empty label for spacing
+        
+        # Promotional message
+        promo_label = QLabel("If you want to learn language learning theory so you can reach native levels, click the button below.")
+        promo_label.setWordWrap(True)
+        promo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        promo_label.setStyleSheet("font-size: 12px; color: #666; margin: 5px 0px;")
+        promo_layout.addWidget(promo_label)
+        
+        # Promotional button
+        promo_button = QPushButton("Learn Language Learning Theory")
+        promo_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: bold;
+                border-radius: 4px;
+                margin: 5px 0px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:pressed {
+                background-color: #3d8b40;
+            }
+        """)
+        qconnect(promo_button.clicked, self.open_language_learning_community)
+        promo_layout.addWidget(promo_button, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+        main_layout.addWidget(promo_widget)
 
         # Buttons (common to all tabs, so placed outside the tab_widget)
         button_layout = QHBoxLayout()
@@ -802,6 +843,15 @@ class ConfigDialog(QDialog):
                 self.voicevox_voices_table.selectRow(i)
                 break
 
+    def open_language_learning_community(self):
+        """Open the Matt vs Japan language learning community URL in the default browser"""
+        try:
+            webbrowser.open("https://www.skool.com/mattvsjapan/about?ref=837f80b041cf40e9a3979cd1561a67b2")
+            debug_log("Opened language learning community URL in browser")
+        except Exception as e:
+            debug_log(f"Error opening language learning community URL: {str(e)}")
+            QMessageBox.warning(self, "Error", f"Could not open the webpage. Please visit:\nhttps://www.skool.com/mattvsjapan/about?ref=837f80b041cf40e9a3979cd1561a67b2")
+
 # Process a single note with debug mode
 def process_note_debug(note, override_text, override_audio, progress_callback=None):
     addon_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1170,7 +1220,8 @@ def process_current_card():
                 
                 error_msg = str(e)
                 debug_log(f"Error in process_with_progress: {str(e)}")
-                mw.taskman.run_on_main(lambda: show_error(error_msg, progress))
+                mw.taskman.run_on_main(lambda: 
+                    show_error(error_msg, progress))
         
         # Function to handle the result on the main thread
         def handle_process_result(success, message, card, progress):
@@ -1378,10 +1429,16 @@ def on_js_message(handled, message, context):
 
 # Set up menu items
 def setup_menu():
-    # Add the menu option to open settings
-    action = QAction("GPT Language Explainer Settings", mw)
-    qconnect(action.triggered, open_settings)
-    mw.form.menuTools.addAction(action)
+    # Create main menu for AI Language Explainer
+    ai_explainer_menu = QMenu("AI Language Explainer", mw)
+    
+    # Add settings as a submenu option
+    settings_action = QAction("Settings", mw)
+    qconnect(settings_action.triggered, open_settings)
+    ai_explainer_menu.addAction(settings_action)
+    
+    # Add the menu to the Tools menu
+    mw.form.menuTools.addMenu(ai_explainer_menu)
     
     # Enable browser menu action for bulk processing
     debug_log("Registering browser_menus_did_init hook for batch processing")
@@ -1529,7 +1586,7 @@ def setup_browser_menu(browser):
             for menu in browser.form.menubar.findChildren(QMenu):
                 if menu.title() == "Edit":
                     debug_log("Found Edit menu by title")
-                    action = QAction("Batch Generate GPT Explanations", browser)
+                    action = QAction("Batch Generate AI Explanations", browser)
                     qconnect(action.triggered, batch_process_notes)
                     menu.addSeparator()
                     menu.addAction(action)
@@ -1540,7 +1597,7 @@ def setup_browser_menu(browser):
     
     # Original implementation
     try:
-        action = QAction("Batch Generate GPT Explanations", browser)
+        action = QAction("Batch Generate AI Explanations", browser)
         qconnect(action.triggered, batch_process_notes)
         browser.form.menuEdit.addSeparator()
         browser.form.menuEdit.addAction(action)
@@ -1551,7 +1608,7 @@ def setup_browser_menu(browser):
         # Try adding to a different menu as fallback
         try:
             debug_log("Trying to add to Tools menu instead")
-            action = QAction("Batch Generate GPT Explanations", browser)
+            action = QAction("Batch Generate AI Explanations", browser)
             qconnect(action.triggered, batch_process_notes)
             browser.form.menuTools.addSeparator()
             browser.form.menuTools.addAction(action)
