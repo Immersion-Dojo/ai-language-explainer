@@ -93,24 +93,22 @@ This Anki add-on helps language learners understand vocabulary words in context 
 
 ### Common Issues
 
-**API Key Problems**
-- Verify your OpenAI API key is valid and has sufficient credits
-- Use the "Validate Key" button in settings to test connectivity
+**My cards keep failing to generate. Why?**
 
-**Field Configuration**
-- Ensure all configured fields exist in your note type
-- Check field names match exactly (case-sensitive)
+This could be because,
+- Your OpenAI API Key has expired.
+- You ran out of OpenAI API credits.
+- Your prompt is misconfigured. Remember that {sentence}, {word}, and {definition} should all be in lowercase. It's case sensitive. There should be no other {x} in your prompt.
 
-**Audio Generation**
-- **VoiceVox**: Ensure application is running and API server is enabled
-- **AivisSpeech**: Check engine is running on port 10101
-- **ElevenLabs**: Verify API key and voice ID are correct
-- **OpenAI TTS**: Confirm API key has TTS access
+**The audio did not generate. Why?**
 
-**Performance Issues**
-- Check your internet connection stability
-- Monitor API rate limits and usage quotas
-- Review debug logs in the add-on directory
+If you're using VoiceVox or AivisSpeech, you must ensure you have it running in the background.
+
+If you're using ElevenLabs or OpenAI TTS then sure you have an internet connection.
+
+**Why cards fail to generate in bulk after a few cards. Why?**
+
+If you recently made an OpenAI Developer account then your rate limit will be low for the first few days. I'd recommend waiting a few days and only generating a few cards at a time.
 
 ### Debug Information
 Check these files in your add-on directory for detailed error information:
@@ -128,8 +126,6 @@ Modify the GPT prompt to match your learning style:
 
 ### Voice Management
 - Preview all available voices before selecting
-- Set different defaults for different contexts
-- Sample generation with custom text
 
 ### Batch Operations
 - Process entire deck sections at once
