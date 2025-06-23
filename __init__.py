@@ -67,7 +67,7 @@ def check_dependencies():
         import requests
     except ImportError:
         # Show a message about installing dependencies
-        tooltip("Installing required dependencies for GPT Explainer addon...")
+        tooltip("Installing required dependencies for AI Language Explainer addon...")
         
         # Get the addon directory
         addon_dir = os.path.dirname(os.path.abspath(__file__))
@@ -171,7 +171,7 @@ def get_fields_for_note_type(note_type_name):
 class ConfigDialog(QDialog):
     def __init__(self, parent=None):
         super(ConfigDialog, self).__init__(parent)
-        self.setWindowTitle("GPT Language Explainer Settings")
+        self.setWindowTitle("AI Language Explainer Settings")
         self.setMinimumWidth(500) # Set a minimum width for the dialog
         self.setup_ui()
         self.load_settings()
@@ -1051,7 +1051,7 @@ def process_current_card():
         
         # Create a progress dialog with a visible progress bar
         progress = QProgressDialog("Initializing...", "Cancel", 0, 100, mw)
-        progress.setWindowTitle("GPT LanguageExplainer")
+        progress.setWindowTitle("AI Language Explainer")
         progress.setMinimumDuration(0)  # Show immediately
         progress.setAutoClose(False)    # Don't close automatically
         progress.setAutoReset(False)    # Don't reset automatically
@@ -1092,13 +1092,13 @@ def process_current_card():
         audio_exists = CONFIG["explanation_audio_field"] in note and note[CONFIG["explanation_audio_field"]].strip()
         
         # Ask separate override questions
-        override_text = askUser("Do you want to override the explanation field?", title="GPT Explainer", defaultno=False)
+        override_text = askUser("Do you want to override the explanation field?", title="AI Language Explainer", defaultno=False)
         
         # Only ask about audio if it's not disabled in settings
         override_audio = False
         if not CONFIG.get("disable_audio", False):
             # Ask if user wants to overwrite the audio field
-            override_audio = askUser("Do you want to override the explanation audio field?", title="GPT Explainer", defaultno=False)
+            override_audio = askUser("Do you want to override the explanation audio field?", title="AI Language Explainer", defaultno=False)
         else:
             debug_log("Audio generation disabled in settings, skipping audio override prompt")
         
@@ -1290,7 +1290,7 @@ def add_button_to_reviewer():
         # Create JavaScript code to add button
         js = """
         (function() {
-            console.log('Running GPT button script');
+            console.log('Running AI Language Explainer button script');
             
             // Check if the button already exists
             if (document.getElementById('gpt-button')) {
@@ -1340,7 +1340,7 @@ def add_button_to_reviewer():
             // Add to the document body
             document.body.appendChild(buttonContainer);
             
-            console.log('GPT Language Explainer button added successfully');
+            console.log('AI Language Explainer button added successfully');
         })();
         """
         
@@ -1467,17 +1467,17 @@ def batch_process_notes():
     
     # Check if configuration is loaded
     if not CONFIG["openai_key"]:
-        showInfo("Please set your OpenAI API key in the GPT Language Explainer Settings.")
+        showInfo("Please set your OpenAI API key in the AI Language Explainer Settings.")
         return
     
     # Ask if user wants to overwrite text only
-    override_text = askUser("Do you want to override the explanation field?", title="GPT Explainer", defaultno=False)
+    override_text = askUser("Do you want to override the explanation field?", title="AI Language Explainer", defaultno=False)
     
     # Only ask about audio if it's not disabled in settings
     override_audio = False
     if not CONFIG.get("disable_audio", False):
         # Ask if user wants to overwrite the voice field
-        override_audio = askUser("Do you want to override the explanation audio field?", title="GPT Explainer", defaultno=False)
+        override_audio = askUser("Do you want to override the explanation audio field?", title="AI Language Explainer", defaultno=False)
     else:
         debug_log("Audio generation disabled in settings, skipping audio override prompt")
     
@@ -1486,7 +1486,7 @@ def batch_process_notes():
     
     # Create a progress dialog with fixed width to avoid the resizing issue
     progress = QProgressDialog("Processing cards...", "Cancel", 0, len(selected_notes) + 1, mw)
-    progress.setWindowTitle("GPT Language Explainer Batch Processing")
+    progress.setWindowTitle("AI Language Explainer Batch Processing")
     
     # Fix for Qt6 compatibility - use Qt.WindowModality.ApplicationModal instead of Qt.WindowModal
     try:
@@ -1619,7 +1619,7 @@ def setup_browser_menu(browser):
 # Initialize the add-on
 def init():
     try:
-        debug_log("Initializing GPT Language Explainer addon")
+        debug_log("Initializing AI Language Explainer addon")
         
         # Load configuration
         load_config()
@@ -1640,7 +1640,7 @@ def init():
         gui_hooks.webview_did_receive_js_message.append(on_js_message)
         debug_log("Registered webview_did_receive_js_message hook")
         
-        debug_log("GPT Language Explainer addon initialization complete")
+        debug_log("AI Language Explainer addon initialization complete")
     except Exception as e:
         debug_log(f"Error during initialization: {str(e)}")
         debug_log(traceback.format_exc())
