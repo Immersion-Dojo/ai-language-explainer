@@ -1,52 +1,155 @@
-# GPT Explainer for Anki
+# AI Language Explainer for Anki
 
-This addon generates explanations for Japanese language learning cards using OpenAI's GPT-4o.
+> **Generate AI-powered explanations for language learning with high-quality text-to-speech audio**
 
-## Features
+This Anki add-on helps language learners understand vocabulary words in context by generating explanations using OpenAI's GPT-4.1 AND relevant audio for those definitions.
 
-- Automatically generates explanations for words based on their definition, example sentence, and context
-- Creates high-quality audio recordings of the explanations using VOICEVOX (requires VOICEVOX to be running)
-- Works with any note type (configurable fields)
-- Adds a button during review to generate explanations on demand
+## ✨ Features
 
-## Setup
+### 🧠 **Intelligent Explanations**
+- Automatically generates contextual explanations for words based on definition, example sentence, and usage.
+- Uses OpenAI's latest GPT-4.1 model for accurate, beginner-friendly explanations
+- Customizable prompts to match your learning style and level
 
-1. Install the addon through Anki's addon manager
-2. Go to Tools > GPT Language Explainer Settings
-3. Select your note type (e.g., "Ray's Sentence Mining")
-4. Configure the input fields (word, sentence, definition, picture)
-5. Configure the output fields (explanation, explanation audio)
-6. Enter your OpenAI API key
-7. Customize the GPT prompt if desired
-8. Click Save
+### 🎵 **High-Quality Audio Generation**
+- **Multiple TTS Engines**: Choose from VoiceVox, AivisSpeech, ElevenLabs, or OpenAI TTS
+- **Voice Preview & Selection**: Listen to samples and choose your preferred voice for AivisSpeech and VoiceVox
+- **Batch Processing**: Generate audio for multiple cards at once
 
-## Audio Generation with VOICEVOX
+### ⚙️ **Flexible Configuration**
+- Works with any note type (fully configurable fields)
+- Tabbed settings interface for easy organization
+- Option to disable audio generation or hide UI elements
+- Separate override controls for text and audio regeneration
 
-This addon now uses VOICEVOX for audio generation. VOICEVOX is a free Japanese text-to-speech software that produces high-quality natural-sounding voices.
+### 🚀 **User Experience**
+- One-click generation during card review
+- Batch processing from the browser
+- Progress tracking with detailed status updates
+- Comprehensive error handling and logging
 
-To use the audio generation feature:
+## 📥 Installation
 
-1. Download and install VOICEVOX from the [official website](https://voicevox.hiroshiba.jp/)
-2. Start VOICEVOX before generating explanations in Anki
-3. VOICEVOX must be running in the background for audio generation to work
-4. The addon will automatically detect if VOICEVOX is running and use it for audio generation
+1. **Install the add-on** through Anki's add-on manager
+2. **Configure settings** by going to `Tools > AI Language Explainer > Settings`
+3. **Set up your note type** and field mappings
+4. **Add your OpenAI API key**
+5. **Choose your preferred TTS engine** (optional)
 
-If VOICEVOX is not running, the addon will display a message and continue without generating audio.
+## ⚡ Quick Setup
 
-## Requirements
+### 1. Basic Configuration
+- **Note Type**: Select your card type (e.g., "Sentence Mining", "Vocabulary")
+- **Input Fields**: Map your word, sentence, and definition fields
+- **Output Fields**: Set where explanations and audio should be saved
+- **OpenAI API Key**: Enter your API key for text generation
 
-- Anki 25+
-- An OpenAI API key with access to GPT-4o
-- Internet connection
-- VOICEVOX (for audio generation)
+### 2. Audio Setup (Optional)
 
-## Troubleshooting
+#### **VoiceVox** (Free, Japanese-focused)
+1. Download and install [VOICEVOX](https://voicevox.hiroshiba.jp/)
+2. Start VOICEVOX before using the add-on (runs on `http://localhost:50021`)
+3. Test connection and select preferred voice in settings
 
-If you encounter any issues:
+#### **AivisSpeech** (Free, High-quality)
+1. Download and install [AivisSpeech Engine](https://aivis.dev/)
+2. Start the engine (runs on `http://127.0.0.1:10101`)
+3. Load voices and select default in the add-on settings
+4. Download additional voices from [AivisHub](https://aivis.dev/hub)
 
-1. Make sure your OpenAI API key is valid and has sufficient credits
-2. Check that the configured fields exist in your note type
-3. Ensure you have an active internet connection
-4. If images aren't being processed correctly, make sure they are in a supported format (JPG, PNG, etc.)
-5. For audio generation issues, verify that VOICEVOX is running and accessible at http://localhost:50021
-6. Check the error_log.txt file in the addon directory for detailed error information
+#### **ElevenLabs** (Premium, Multilingual)
+1. Create an account at [ElevenLabs](https://elevenlabs.io/)
+2. Get your API key and voice ID
+3. Enter credentials in the TTS settings
+
+#### **OpenAI TTS** (Premium, Reliable)
+1. Use the same OpenAI API key as text generation
+2. Choose from available voices (alloy, echo, fable, etc.)
+
+## 🎯 Usage
+
+### During Review
+1. Review your card as normal
+2. Click **"Generate explanation"** button when answer is shown
+3. Choose whether to override existing content
+4. Wait for AI generation and audio synthesis
+5. New content appears automatically on your card
+
+### Batch Processing
+1. Open the Anki browser
+2. Select cards you want to process
+3. Go to `Edit > Batch Generate AI Explanations`
+4. Choose override options
+5. Monitor progress and review results
+
+## 🛠️ Requirements
+
+- **Anki**: Version 2.1.50+ (tested with Anki 25+)
+- **OpenAI API Key**: With GPT-4.1 access and sufficient credits
+- **Internet Connection**: For API calls
+- **TTS Engine** (optional): Choose from supported engines for audio generation
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**API Key Problems**
+- Verify your OpenAI API key is valid and has sufficient credits
+- Use the "Validate Key" button in settings to test connectivity
+
+**Field Configuration**
+- Ensure all configured fields exist in your note type
+- Check field names match exactly (case-sensitive)
+
+**Audio Generation**
+- **VoiceVox**: Ensure application is running and API server is enabled
+- **AivisSpeech**: Check engine is running on port 10101
+- **ElevenLabs**: Verify API key and voice ID are correct
+- **OpenAI TTS**: Confirm API key has TTS access
+
+**Performance Issues**
+- Check your internet connection stability
+- Monitor API rate limits and usage quotas
+- Review debug logs in the add-on directory
+
+### Debug Information
+Check these files in your add-on directory for detailed error information:
+- `debug_log.txt` - General operation logs
+- `crash_log.txt` - System crash information
+- `process_debug.txt` - Note processing details
+
+## 🌟 Advanced Features
+
+### Custom Prompts
+Modify the GPT prompt to match your learning style:
+- Adjust explanation complexity
+- Change target language focus
+- Customize example formats
+
+### Voice Management
+- Preview all available voices before selecting
+- Set different defaults for different contexts
+- Sample generation with custom text
+
+### Batch Operations
+- Process entire deck sections at once
+- Skip cards that already have content
+- Separate text and audio override controls
+
+## 🎓 Learning Resources
+
+**Want to learn more about effective language learning?**
+
+Check out [Matt vs Japan's Immersion Dojo](https://www.skool.com/mattvsjapan/about?ref=837f80b041cf40e9a3979cd1561a67b2) for advanced language learning theory and community support.
+
+## 📝 License
+
+This project is open source. See the repository for license details.
+
+## 🤝 Contributing
+
+Found a bug or have a feature request? Please open an issue on the GitHub repository.
+
+---
+
+*Happy language learning! 🌍📚* 
