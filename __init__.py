@@ -94,6 +94,7 @@ CONFIG = {
     "explanation_field": "",
     "explanation_audio_field": "",
     "openai_key": "",
+    "openai_model": "gpt-4.1",
     "gpt_prompt": "Please write a short explanation of the word '{word}' in the context of the original sentence: '{sentence}'. The definition of the word is: '{definition}'. Write an explanation that helps a Japanese beginner understand the word and how it is used with this context as an example. Explain it in the same way a native would explain it to a child. Don't use any English, only use simpler Japanese. Don't write the furigana for any of the words in brackets after the word. Don't start with stuff like \u3068\u3044\u3046\u8a00\u8449\u3092\u7c21\u5358\u306b\u8aac\u660e\u3059\u308b\u306d, just dive straight into explaining after starting with the word.",
     "tts_engine": "OpenAI TTS",
     "elevenlabs_key": "",
@@ -259,6 +260,23 @@ class ConfigDialog(QDialog):
         qconnect(self.text_key_validate_btn.clicked, self.validate_openai_key)
         text_key_layout.addWidget(self.text_key_validate_btn)
         layout.addLayout(text_key_layout)
+        
+        # Model selection dropdown
+        model_layout = QHBoxLayout()
+        model_layout.addWidget(QLabel("Model:"))
+        self.model_dropdown = QComboBox()
+        self.model_dropdown.addItems([
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "gpt-4.1-nano", 
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-3.5-turbo"
+        ])
+        self.model_dropdown.setCurrentText("gpt-4.1")
+        model_layout.addWidget(self.model_dropdown)
+        model_layout.addStretch()
+        layout.addLayout(model_layout)
         layout.addWidget(QLabel("Prompt:"))
         self.gpt_prompt_input = QTextEdit()
         self.gpt_prompt_input.setFixedHeight(150) # Increased height
@@ -498,6 +516,7 @@ class ConfigDialog(QDialog):
         
         # Load Text Generation settings
         self.openai_key.setText(CONFIG["openai_key"])
+        self.model_dropdown.setCurrentText(CONFIG["openai_model"])
         self.gpt_prompt_input.setPlainText(CONFIG["gpt_prompt"])
         
         # Load TTS settings
@@ -525,6 +544,7 @@ class ConfigDialog(QDialog):
 
         # Save Text Generation settings
         CONFIG["openai_key"] = self.openai_key.text()
+        CONFIG["openai_model"] = self.model_dropdown.currentText()
         CONFIG["gpt_prompt"] = self.gpt_prompt_input.toPlainText()
 
         # Save TTS settings
@@ -908,7 +928,7 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
             if progress_callback:
                 progress_callback("Sending request to OpenAI...")
                 
-            explanation = process_with_openai(CONFIG["openai_key"], prompt)
+            explanation = process_with_openai(CONFIG["openai_key"], prompt, CONFIG["openai_model"])
             if not explanation:
                 debug_log("Failed to generate explanation from OpenAI")
                 debug_log("Failed to generate explanation from OpenAI")

@@ -31,13 +31,14 @@ def debug_log(message):
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
 # OpenAI API
-def process_with_openai(api_key, prompt, picture_content=""):
+def process_with_openai(api_key, prompt, model="gpt-4.1", picture_content=""):
     """
     Process the prompt with OpenAI's API and return the explanation
     
     Parameters:
     - api_key: OpenAI API key
     - prompt: The prompt to send to GPT
+    - model: The OpenAI model to use
     
     Returns:
     - str: The explanation from GPT
@@ -57,7 +58,7 @@ def process_with_openai(api_key, prompt, picture_content=""):
     ]
     
     data = {
-        "model": "gpt-4.1-2025-04-14",
+        "model": model,
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": 500
