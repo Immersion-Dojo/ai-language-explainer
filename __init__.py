@@ -277,6 +277,12 @@ class ConfigDialog(QDialog):
         model_layout.addWidget(self.model_dropdown)
         model_layout.addStretch()
         layout.addLayout(model_layout)
+        
+        # Model recommendation text
+        model_recommendation = QLabel("gpt-4.1 is recommended as it obeys the prompt well and is reasonably cheap.")
+        model_recommendation.setStyleSheet("font-size: 11px; color: #666; font-style: italic; margin-top: 2px;")
+        model_recommendation.setWordWrap(True)
+        layout.addWidget(model_recommendation)
         layout.addWidget(QLabel("Prompt:"))
         self.gpt_prompt_input = QTextEdit()
         self.gpt_prompt_input.setFixedHeight(150) # Increased height
