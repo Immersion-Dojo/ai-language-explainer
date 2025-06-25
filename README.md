@@ -2,13 +2,13 @@
 
 > **Generate AI-powered explanations for language learning with high-quality text-to-speech audio**
 
-This Anki add-on helps language learners understand vocabulary words in context by generating explanations using OpenAI's GPT-4.1 AND relevant audio for those definitions.
+This Anki add-on helps language learners understand vocabulary words in context by generating explanations of target words using OpenAI's models AND relevant audio.
 
 ## ✨ Features
 
 ### 🧠 **Intelligent Explanations**
-- Automatically generates contextual explanations for words based on definition, example sentence, and usage.
-- Uses OpenAI's latest GPT-4.1 model for accurate, beginner-friendly explanations
+- Automatically generates contextual explanations for words based on a definition, example sentence, and usage.
+- Choose any OpenAI model for accurate, beginner-friendly explanations
 - Customizable prompts to match your learning style and level
 
 ### 🎵 **High-Quality Audio Generation**
@@ -85,7 +85,7 @@ This Anki add-on helps language learners understand vocabulary words in context 
 ## 🛠️ Requirements
 
 - **Anki**: Version 2.1.50+ (tested with Anki 25+)
-- **OpenAI API Key**: With GPT-4.1 access and sufficient credits
+- **OpenAI API Key**: With sufficient credits
 - **Internet Connection**: For API calls
 - **TTS Engine** (optional): Choose from supported engines for audio generation
 
