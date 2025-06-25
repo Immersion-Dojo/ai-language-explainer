@@ -31,7 +31,7 @@ def debug_log(message):
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
 # OpenAI API
-def process_with_openai(api_key, prompt, model="gpt-4.1", picture_content=""):
+def process_with_openai(api_key, prompt, model="gpt-4.1"):
     """
     Process the prompt with OpenAI's API and return the explanation
     
