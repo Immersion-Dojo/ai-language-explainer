@@ -231,7 +231,7 @@ def generate_audio_elevenlabs(api_key, text, voice_id):
         debug_log("=== ELEVENLABS AUDIO GENERATION END ===")
 
 # OpenAI TTS generation
-def generate_audio_openai_tts(api_key, text, voice):
+def generate_audio_openai_tts(api_key, text, voice, speed=1.0):
     """Generate audio using OpenAI TTS endpoint."""
     debug_log("=== OPENAI TTS GENERATION START ===")
     if not api_key or not text or not voice:
@@ -243,8 +243,8 @@ def generate_audio_openai_tts(api_key, text, voice):
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
-        payload = {"model": "tts-1", "voice": voice, "input": text}
-        debug_log(f"Sending OpenAI TTS request: model=tts-1, voice={voice}, input length={len(text)}")
+        payload = {"model": "tts-1", "voice": voice, "input": text, "speed": speed}
+        debug_log(f"Sending OpenAI TTS request: model=tts-1, voice={voice}, speed={speed}, input length={len(text)}")
         response = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
         debug_log(f"OpenAI TTS status: {response.status_code}")
         if response.status_code != 200:
@@ -548,7 +548,8 @@ def generate_audio(api_key, text, engine_override=None, style_id_override=None, 
     if engine == "ElevenLabs":
         return generate_audio_elevenlabs(CONFIG.get("elevenlabs_key", ""), text, CONFIG.get("elevenlabs_voice_id", ""))
     if engine == "OpenAI TTS":
-        return generate_audio_openai_tts(api_key, text, CONFIG.get("openai_tts_voice", "alloy"))
+        speed = CONFIG.get("openai_tts_speed", 1.0)
+        return generate_audio_openai_tts(api_key, text, CONFIG.get("openai_tts_voice", "alloy"), speed)
     if engine == "AivisSpeech":
         # Use style_id_override if provided (for samples), else use configured default, else fallback in generate_audio_aivisspeech
         current_aivis_style_id = style_id_override if style_id_override is not None else CONFIG.get("aivisspeech_style_id")
