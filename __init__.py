@@ -1,7 +1,7 @@
 # File: __init__.py
 from aqt import mw, gui_hooks
 from aqt.utils import qconnect, showInfo, tooltip, askUser
-from aqt.qt import QAction, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QLineEdit, QTextEdit, QProgressDialog, QCheckBox, QMessageBox, QApplication, Qt, QTimer, QMenu, QWidget, QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView
+from aqt.qt import QAction, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QLineEdit, QTextEdit, QProgressDialog, QCheckBox, QMessageBox, QApplication, Qt, QTimer, QMenu, QWidget, QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView, QSlider
 from anki.notes import Note
 import os
 import json
@@ -87,23 +87,36 @@ from .api_handler import process_with_openai, generate_audio, check_voicevox_run
 
 # Global variables to store configuration
 CONFIG = {
+    # === Note Configuration ===
+    # Which note type and fields to use for processing
     "note_type": "",
     "word_field": "",
     "sentence_field": "",
     "definition_field": "",
     "explanation_field": "",
     "explanation_audio_field": "",
+    
+    # === OpenAI/Text Generation Settings ===
     "openai_key": "",
     "openai_model": "gpt-4.1",
     "gpt_prompt": "Please write a short explanation of the word '{word}' in the context of the original sentence: '{sentence}'. The definition of the word is: '{definition}'. Write an explanation that helps a Japanese beginner understand the word and how it is used with this context as an example. Explain it in the same way a native would explain it to a child. Don't use any English, only use simpler Japanese. Don't write the furigana for any of the words in brackets after the word. Don't start with stuff like \u3068\u3044\u3046\u8a00\u8449\u3092\u7c21\u5358\u306b\u8aac\u660e\u3059\u308b\u306d, just dive straight into explaining after starting with the word.",
+    
+    # === TTS/Audio Generation Settings ===
     "tts_engine": "OpenAI TTS",
+    # ElevenLabs settings
     "elevenlabs_key": "",
     "elevenlabs_voice_id": "",
+    # OpenAI TTS settings
     "openai_tts_voice": "alloy",
+    "openai_tts_speed": 1.0,
+    # Local TTS engine settings
     "aivisspeech_style_id": None,
     "voicevox_style_id": None,
+    
+    # === Feature Toggles & UI Preferences ===
+    "disable_text_generation": False,
     "disable_audio": False,      
-    "hide_button": False      
+    "hide_button": False
 }
 
 # Load configuration
@@ -167,6 +180,91 @@ def get_fields_for_note_type(note_type_name):
         return []
     
     return [field['name'] for field in model['flds']]
+
+# Bulk Generation Override Dialog
+class BulkGenerationDialog(QDialog):
+    def __init__(self, parent=None):
+        super(BulkGenerationDialog, self).__init__(parent)
+        self.setWindowTitle("AI Language Explainer - Bulk Generation Options")
+        self.setMinimumWidth(400)
+        self.setup_ui()
+        
+        # Initialize result variables
+        self.override_explanation = False
+        self.override_explanation_audio = False
+        
+    def setup_ui(self):
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+        
+        # Main instruction label
+        instruction_label = QLabel("Select which content to override during bulk generation:")
+        instruction_label.setWordWrap(True)
+        layout.addWidget(instruction_label)
+        
+        # Create checkboxes
+        self.explanation_checkbox = QCheckBox("Override Explanation")
+        self.explanation_audio_checkbox = QCheckBox("Override Explanation Audio")
+        
+        layout.addWidget(self.explanation_checkbox)
+        layout.addWidget(self.explanation_audio_checkbox)
+        
+        # Add note about disabled features
+        self.note_label = QLabel("")
+        self.note_label.setStyleSheet("color: #666; font-style: italic; margin-top: 10px;")
+        self.note_label.setWordWrap(True)
+        layout.addWidget(self.note_label)
+        
+        # Update UI based on current settings
+        self.update_checkbox_states()
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        self.ok_button = QPushButton("OK")
+        self.cancel_button = QPushButton("Cancel")
+        
+        qconnect(self.ok_button.clicked, self.accept)
+        qconnect(self.cancel_button.clicked, self.reject)
+        
+        button_layout.addWidget(self.ok_button)
+        button_layout.addWidget(self.cancel_button)
+        layout.addLayout(button_layout)
+    
+    def update_checkbox_states(self):
+        """Update checkbox states based on current settings and show appropriate notes"""
+        text_generation_disabled = CONFIG.get("disable_text_generation", False)
+        audio_disabled = CONFIG.get("disable_audio", False)
+        
+        notes = []
+        
+        # Handle text generation checkbox
+        if text_generation_disabled:
+            self.explanation_checkbox.setEnabled(False)
+            self.explanation_checkbox.setChecked(False)
+            notes.append("Text generation is disabled in settings")
+        else:
+            self.explanation_checkbox.setEnabled(True)
+        
+        # Handle audio generation checkbox  
+        if audio_disabled:
+            self.explanation_audio_checkbox.setEnabled(False)
+            self.explanation_audio_checkbox.setChecked(False)
+            notes.append("Audio generation is disabled in settings")
+        else:
+            self.explanation_audio_checkbox.setEnabled(True)
+        
+        # Show combined notes
+        if notes:
+            self.note_label.setText("Note: " + ", ".join(notes) + ".")
+        else:
+            self.note_label.setText("")
+    
+    def get_override_options(self):
+        """Get the selected override options"""
+        return (
+            self.explanation_checkbox.isChecked() and self.explanation_checkbox.isEnabled(),
+            self.explanation_audio_checkbox.isChecked() and self.explanation_audio_checkbox.isEnabled()
+        )
 
 # Configuration dialog
 class ConfigDialog(QDialog):
@@ -251,6 +349,17 @@ class ConfigDialog(QDialog):
         layout = QVBoxLayout(text_gen_tab) # Reuse 'layout' for this tab's content
 
         layout.addWidget(QLabel("<b>Text Generation</b>"))
+        
+        # Checkbox for disabling text generation
+        self.disable_text_generation_checkbox = QCheckBox("Disable text generation (audio only mode)")
+        layout.addWidget(self.disable_text_generation_checkbox)
+        qconnect(self.disable_text_generation_checkbox.toggled, self.update_text_generation_panels)
+        
+        # Create a container widget for the text generation settings
+        self.text_generation_settings_widget = QWidget()
+        text_gen_layout = QVBoxLayout(self.text_generation_settings_widget)
+        text_gen_layout.setContentsMargins(0, 0, 0, 0)
+        
         text_key_layout = QHBoxLayout()
         text_key_layout.addWidget(QLabel("OpenAI API Key:"))
         self.openai_key = QLineEdit()
@@ -259,7 +368,7 @@ class ConfigDialog(QDialog):
         self.text_key_validate_btn = QPushButton("Validate Key")
         qconnect(self.text_key_validate_btn.clicked, self.validate_openai_key)
         text_key_layout.addWidget(self.text_key_validate_btn)
-        layout.addLayout(text_key_layout)
+        text_gen_layout.addLayout(text_key_layout)
         
         # Model selection dropdown
         model_layout = QHBoxLayout()
@@ -276,17 +385,19 @@ class ConfigDialog(QDialog):
         self.model_dropdown.setCurrentText("gpt-4.1")
         model_layout.addWidget(self.model_dropdown)
         model_layout.addStretch()
-        layout.addLayout(model_layout)
+        text_gen_layout.addLayout(model_layout)
         
         # Model recommendation text
         model_recommendation = QLabel("gpt-4.1 is recommended as it obeys the prompt well and is reasonably cheap.")
         model_recommendation.setStyleSheet("font-size: 11px; color: #666; font-style: italic; margin-top: 2px;")
         model_recommendation.setWordWrap(True)
-        layout.addWidget(model_recommendation)
-        layout.addWidget(QLabel("Prompt:"))
+        text_gen_layout.addWidget(model_recommendation)
+        text_gen_layout.addWidget(QLabel("Prompt:"))
         self.gpt_prompt_input = QTextEdit()
         self.gpt_prompt_input.setFixedHeight(150) # Increased height
-        layout.addWidget(self.gpt_prompt_input)
+        text_gen_layout.addWidget(self.gpt_prompt_input)
+        
+        layout.addWidget(self.text_generation_settings_widget)
         layout.addStretch() # Add stretch
         tab_widget.addTab(text_gen_tab, "Text Generation")
 
@@ -364,6 +475,8 @@ class ConfigDialog(QDialog):
         self.panel_openai_tts = QWidget()
         poi = QVBoxLayout(self.panel_openai_tts)
         poi.setContentsMargins(0,0,0,0)
+        
+        # Voice selection row
         openai_tts_layout = QHBoxLayout()
         openai_tts_layout.addWidget(QLabel("OpenAI TTS Voice:"))
         self.openai_tts_combo = QComboBox()
@@ -373,6 +486,27 @@ class ConfigDialog(QDialog):
         qconnect(self.openai_tts_validate_btn.clicked, self.validate_openai_key) # Reconnect OpenAI key validation
         openai_tts_layout.addWidget(self.openai_tts_validate_btn)
         poi.addLayout(openai_tts_layout)
+        
+        # Speed slider row
+        speed_layout = QHBoxLayout()
+        speed_layout.addWidget(QLabel("Speed:"))
+        self.openai_tts_speed_slider = QSlider(Qt.Orientation.Horizontal)
+        self.openai_tts_speed_slider.setMinimum(50)  # 0.5 * 100
+        self.openai_tts_speed_slider.setMaximum(300) # 3.0 * 100
+        self.openai_tts_speed_slider.setValue(100)   # 1.0 * 100 (default)
+        self.openai_tts_speed_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.openai_tts_speed_slider.setTickInterval(50)  # Ticks at 0.5, 1.0, 1.5, 2.0, 2.5, 3.0
+        speed_layout.addWidget(self.openai_tts_speed_slider)
+        
+        # Speed value label
+        self.openai_tts_speed_label = QLabel("1.0x")
+        self.openai_tts_speed_label.setMinimumWidth(40)
+        speed_layout.addWidget(self.openai_tts_speed_label)
+        
+        # Connect slider to update label
+        qconnect(self.openai_tts_speed_slider.valueChanged, self.update_speed_label)
+        
+        poi.addLayout(speed_layout)
         layout.addWidget(self.panel_openai_tts)
 
         # AivisSpeech subpanel
@@ -530,14 +664,22 @@ class ConfigDialog(QDialog):
         self.elevenlabs_key_input.setText(CONFIG["elevenlabs_key"])
         self.elevenlabs_voice_id_input.setText(CONFIG["elevenlabs_voice_id"])
         self.openai_tts_combo.setCurrentText(CONFIG["openai_tts_voice"])
+        
+        # Load OpenAI TTS speed setting
+        speed_value = CONFIG.get("openai_tts_speed", 1.0)
+        self.openai_tts_speed_slider.setValue(int(speed_value * 100))
+        self.update_speed_label()  # Update the label to show current value
+        
         self.aivisspeech_style_id = CONFIG.get("aivisspeech_style_id")
         self.voicevox_style_id = CONFIG.get("voicevox_style_id")
 
         # Load UI preference settings
         self.disable_audio_checkbox.setChecked(CONFIG.get("disable_audio", False))
         self.hide_button_checkbox.setChecked(CONFIG.get("hide_button", False))
+        self.disable_text_generation_checkbox.setChecked(CONFIG.get("disable_text_generation", False))
         
         self.update_tts_panels()
+        self.update_text_generation_panels()
 
     def save_and_close(self):
         # Update config with dialog values
@@ -558,14 +700,27 @@ class ConfigDialog(QDialog):
         CONFIG["elevenlabs_key"] = self.elevenlabs_key_input.text()
         CONFIG["elevenlabs_voice_id"] = self.elevenlabs_voice_id_input.text()
         CONFIG["openai_tts_voice"] = self.openai_tts_combo.currentText()
+        CONFIG["openai_tts_speed"] = self.openai_tts_speed_slider.value() / 100.0
 
         # Save UI preference settings
         CONFIG["disable_audio"] = self.disable_audio_checkbox.isChecked()
         CONFIG["hide_button"] = self.hide_button_checkbox.isChecked()
+        CONFIG["disable_text_generation"] = self.disable_text_generation_checkbox.isChecked()
         
         # Save to disk
         save_config()
         self.accept()
+
+    def update_text_generation_panels(self):
+        """Hide/show text generation settings based on disable_text_generation checkbox"""
+        # If text generation is disabled, hide all text generation settings
+        is_disabled = self.disable_text_generation_checkbox.isChecked()
+        self.text_generation_settings_widget.setVisible(not is_disabled)
+
+    def update_speed_label(self):
+        """Update the speed label when the slider value changes"""
+        speed_value = self.openai_tts_speed_slider.value() / 100.0
+        self.openai_tts_speed_label.setText(f"{speed_value:.1f}x")
 
     def update_tts_panels(self):
         # Show the panel matching the selected TTS engine only
@@ -900,8 +1055,19 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
         debug_log(f"Sentence field: {CONFIG['sentence_field']} = {sentence[:30]}...")
         debug_log(f"Definition field: {CONFIG['definition_field']} = {definition[:30]}...")
         
-        # Skip only if neither text nor audio override is requested and both contents exist
-        if not override_text and not override_audio:
+        # Check if text generation is disabled in settings
+        text_generation_disabled = CONFIG.get("disable_text_generation", False)
+        debug_log(f"Text generation disabled: {text_generation_disabled}")
+        
+        # Determine what actually needs to be generated based on overrides and settings
+        should_generate_text = override_text and not text_generation_disabled
+        should_generate_audio = override_audio and not CONFIG.get("disable_audio", False)
+        
+        debug_log(f"Should generate text: {should_generate_text}")
+        debug_log(f"Should generate audio: {should_generate_audio}")
+        
+        # Skip only if neither text nor audio generation is needed and content already exists
+        if not should_generate_text and not should_generate_audio:
             debug_log("Checking if content already exists")
             explanation_exists = CONFIG["explanation_field"] in note and note[CONFIG["explanation_field"]].strip()
             # Check if audio field exists in the note before checking its content
@@ -910,134 +1076,167 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
             debug_log(f"explanation exists: {explanation_exists}")
             debug_log(f"Audio exists: {audio_exists}")
             
-            # Skip if both fields already have content
-            if explanation_exists and audio_exists:
-                debug_log("Both fields have content, skipping")
-                return True, "Content already exists"
+            # If only checking for existing content, use appropriate logic
+            if text_generation_disabled and not CONFIG.get("disable_audio", False):
+                # Text generation disabled but audio enabled: only check if audio exists
+                if audio_exists:
+                    debug_log("Audio exists and only audio generation enabled, skipping")
+                    return True, "Content already exists"
+            elif CONFIG.get("disable_audio", False) and not text_generation_disabled:
+                # Audio disabled but text enabled: only check if explanation exists  
+                if explanation_exists:
+                    debug_log("Explanation exists and only text generation enabled, skipping")
+                    return True, "Content already exists"
+            elif not text_generation_disabled and not CONFIG.get("disable_audio", False):
+                # Both enabled: check if both exist
+                if explanation_exists and audio_exists:
+                    debug_log("Both fields have content, skipping")
+                    return True, "Content already exists"
+            else:
+                # Both disabled: nothing to do
+                debug_log("Both text and audio generation disabled, skipping")
+                return True, "Nothing to generate"
         
-        # Process with OpenAI
-        debug_log("Preparing prompt for OpenAI")
-        try:
-            prompt = CONFIG["gpt_prompt"].format(
-                word=word,
-                sentence=sentence,
-                definition=definition
-            )
-        except KeyError as e:
-            debug_log(f"KeyError in prompt formatting: {str(e)}")
-            debug_log(f"Prompt template: {CONFIG['gpt_prompt']}")
-            debug_log(f"Available variables: word='{word}', sentence='{sentence}', definition='{definition}'")
-            return False, f"Error in prompt template: missing placeholder {str(e)}"
-        
-        debug_log("Calling process_with_openai")
-        try:
-            if progress_callback:
-                progress_callback("Sending request to OpenAI...")
+        # Process with OpenAI (only if text generation is needed)
+        explanation = None
+        if should_generate_text:
+            debug_log("Text generation needed - preparing prompt for OpenAI")
+            try:
+                prompt = CONFIG["gpt_prompt"].format(
+                    word=word,
+                    sentence=sentence,
+                    definition=definition
+                )
+            except KeyError as e:
+                debug_log(f"KeyError in prompt formatting: {str(e)}")
+                debug_log(f"Prompt template: {CONFIG['gpt_prompt']}")
+                debug_log(f"Available variables: word='{word}', sentence='{sentence}', definition='{definition}'")
+                return False, f"Error in prompt template: missing placeholder {str(e)}"
+            
+            debug_log("Calling process_with_openai")
+            try:
+                if progress_callback:
+                    progress_callback("Sending request to OpenAI...")
+                    
+                explanation = process_with_openai(CONFIG["openai_key"], prompt, CONFIG["openai_model"])
+                if not explanation:
+                    debug_log("Failed to generate explanation from OpenAI")
+                    return False, "Failed to generate explanation from OpenAI"
+                debug_log(f"Received explanation: {explanation[:50]}...")
                 
-            explanation = process_with_openai(CONFIG["openai_key"], prompt, CONFIG["openai_model"])
-            if not explanation:
-                debug_log("Failed to generate explanation from OpenAI")
-                debug_log("Failed to generate explanation from OpenAI")
-                return False, "Failed to generate explanation from OpenAI"
-            debug_log(f"Received explanation: {explanation[:50]}...")
+                if progress_callback:
+                    progress_callback("Received explanation from OpenAI")
+            except Exception as e:
+                debug_log(f"Error in process_with_openai: {str(e)}")
+                return False, f"Error calling OpenAI API: {str(e)}"
+        else:
+            debug_log("Text generation not needed - using existing content for audio generation")
+            # Use existing explanation for audio generation if available
+            if CONFIG["explanation_field"] in note and note[CONFIG["explanation_field"]].strip():
+                explanation = note[CONFIG["explanation_field"]]
+                debug_log("Using existing explanation text for audio generation")
+            else:
+                # Use word for audio generation if no explanation exists
+                explanation = word if word else "テスト"
+                debug_log(f"No existing explanation, using word for audio: {explanation}")
             
             if progress_callback:
-                progress_callback("Received explanation from OpenAI")
-        except Exception as e:
-            debug_log(f"Error in process_with_openai: {str(e)}")
-            return False, f"Error calling OpenAI API: {str(e)}"
+                progress_callback("Using existing content for audio generation")
         
-        # Save explanation to note
-        if CONFIG["explanation_field"] in note:
-            debug_log(f"Saving explanation to field: {CONFIG['explanation_field']}")
-            if override_text or not note[CONFIG["explanation_field"]].strip():
-                try:
-                    note[CONFIG["explanation_field"]] = explanation
-                    debug_log("explanation saved to note")
-                    
-                    if progress_callback:
-                        progress_callback("explanation saved to note")
-                except Exception as e:
-                    debug_log(f"Error setting explanation field: {CONFIG['explanation_field']}: {str(e)}")
-                    return False, f"Error saving explanation to note: {str(e)}"
+        # Save explanation to note (only if text generation was performed and we have new content)
+        if should_generate_text and CONFIG["explanation_field"] in note:
+            debug_log(f"Saving newly generated explanation to field: {CONFIG['explanation_field']}")
+            try:
+                note[CONFIG["explanation_field"]] = explanation
+                debug_log("Newly generated explanation saved to note")
+                
+                if progress_callback:
+                    progress_callback("Explanation saved to note")
+            except Exception as e:
+                debug_log(f"Error setting explanation field: {CONFIG['explanation_field']}: {str(e)}")
+                return False, f"Error saving explanation to note: {str(e)}"
+        elif not should_generate_text:
+            debug_log("Text generation not performed, skipping explanation field update")
         
-        # Also try the "explanation" field (with correct spelling) if it exists
-        if "explanation" in note and CONFIG["explanation_field"] != "explanation":
-            debug_log("Also saving to 'explanation' field (correct spelling)")
-            if override_text or not note["explanation"].strip():
-                try:
-                    note["explanation"] = explanation
-                    debug_log("Explanation saved to note (correct spelling field)")
-                except Exception as e:
-                    debug_log(f"Error setting explanation field (correct spelling): {str(e)}")
-                    # Continue even if this fails
+        # Also try the "explanation" field (with correct spelling) if it exists (only if text generation was performed)
+        if should_generate_text and "explanation" in note and CONFIG["explanation_field"] != "explanation":
+            debug_log("Also saving newly generated explanation to 'explanation' field (correct spelling)")
+            try:
+                note["explanation"] = explanation
+                debug_log("Explanation saved to note (correct spelling field)")
+            except Exception as e:
+                debug_log(f"Error setting explanation field (correct spelling): {str(e)}")
+                # Continue even if this fails
         
         # Audio generation using the selected TTS engine
         debug_log("Starting audio generation step")
         audio_path_result = [None]
         
-        # Check if audio generation is disabled in settings
-        if CONFIG.get("disable_audio", False):
-            debug_log("Audio generation is disabled in settings, skipping")
-            # Set placeholder message for audio field if it exists
-            if CONFIG["explanation_audio_field"] in note:
-                note[CONFIG["explanation_audio_field"]] = "[Audio generation disabled in settings]"
-                debug_log("Added placeholder to audio field (disabled in settings)")
-        else:
-            # Only generate if the audio field exists and override_audio is True or the field is empty
+        # Check if audio generation should be performed
+        if should_generate_audio:
+            debug_log("Audio generation needed - proceeding with TTS")
+            # Only generate if the audio field exists
             if CONFIG["explanation_audio_field"] in note:
                 debug_log(f"Audio field found: {CONFIG['explanation_audio_field']}")
-                if override_audio or not note[CONFIG["explanation_audio_field"]].strip():
-                    try:
-                        # Update progress callback
-                        if progress_callback:
-                            progress_callback(f"Generating audio with {CONFIG['tts_engine']}...")
-                        # Generate audio
-                        debug_log(f"Calling generate_audio with engine: {CONFIG['tts_engine']}")
-                        aivis_style_id = CONFIG.get("aivisspeech_style_id") if CONFIG['tts_engine'] == 'AivisSpeech' else None
-                        voicevox_speaker_id = CONFIG.get("voicevox_default_speaker_id") if CONFIG['tts_engine'] == 'VoiceVox' else None
-                        audio_path = generate_audio(
-                            CONFIG.get("openai_key", ""),
-                            explanation,
-                            style_id_override=aivis_style_id,
-                            speaker_id_override=voicevox_speaker_id
-                        )
-                        if audio_path:
-                            debug_log(f"Audio generated: {audio_path}")
-                            audio_path_result[0] = audio_path
-                    except Exception as e:
-                        debug_log(f"Error during audio generation: {str(e)}")
-                    # Save result or placeholder
-                    if audio_path_result[0]:
-                        # If the returned value is already an Anki sound tag, use it as-is,
-                        # otherwise wrap the filename in one. This prevents double "[sound:" tags
-                        if str(audio_path_result[0]).startswith("[sound:") and str(audio_path_result[0]).endswith("]"):
-                            note[CONFIG["explanation_audio_field"]] = audio_path_result[0]
-                        else:
-                            audio_filename = os.path.basename(audio_path_result[0])
-                            note[CONFIG["explanation_audio_field"]] = f"[sound:{audio_filename}]"
-                        debug_log("Audio reference saved to note")
-                    else:
-                        note[CONFIG["explanation_audio_field"]] = "[Audio generation skipped or failed]"
-                        debug_log("Audio generation skipped or failed, placeholder saved")
-            else:
-                debug_log(f"Audio field not found in note: {CONFIG['explanation_audio_field']}")
-        
-            # Also try the "explanationAudio" field (with correct spelling) if it exists
-            if "explanationAudio" in note and CONFIG["explanation_audio_field"] != "explanationAudio":
-                debug_log("Checking for 'explanationAudio' field (correct spelling)")
+                try:
+                    # Update progress callback
+                    if progress_callback:
+                        progress_callback(f"Generating audio with {CONFIG['tts_engine']}...")
+                    # Generate audio using the explanation text (existing or newly generated)
+                    debug_log(f"Calling generate_audio with engine: {CONFIG['tts_engine']}")
+                    aivis_style_id = CONFIG.get("aivisspeech_style_id") if CONFIG['tts_engine'] == 'AivisSpeech' else None
+                    voicevox_speaker_id = CONFIG.get("voicevox_default_speaker_id") if CONFIG['tts_engine'] == 'VoiceVox' else None
+                    audio_path = generate_audio(
+                        CONFIG.get("openai_key", ""),
+                        explanation,
+                        style_id_override=aivis_style_id,
+                        speaker_id_override=voicevox_speaker_id
+                    )
+                    if audio_path:
+                        debug_log(f"Audio generated successfully: {audio_path}")
+                        audio_path_result[0] = audio_path
+                except Exception as e:
+                    debug_log(f"Error during audio generation: {str(e)}")
+                
+                # Save audio result to note if generation was successful
                 if audio_path_result[0]:
                     # If the returned value is already an Anki sound tag, use it as-is,
                     # otherwise wrap the filename in one. This prevents double "[sound:" tags
                     if str(audio_path_result[0]).startswith("[sound:") and str(audio_path_result[0]).endswith("]"):
-                        note["explanationAudio"] = audio_path_result[0]
+                        note[CONFIG["explanation_audio_field"]] = audio_path_result[0]
                     else:
                         audio_filename = os.path.basename(audio_path_result[0])
-                        note["explanationAudio"] = f"[sound:{audio_filename}]"
-                    debug_log("Audio reference saved to explanationAudio field (correct spelling)")
+                        note[CONFIG["explanation_audio_field"]] = f"[sound:{audio_filename}]"
+                    debug_log("Audio reference saved to note")
                 else:
-                    note["explanationAudio"] = "[Audio generation skipped or failed]"
-                    debug_log("Audio generation was skipped or failed, setting placeholder text")
+                    # Audio generation failed - add placeholder
+                    note[CONFIG["explanation_audio_field"]] = "[Audio generation failed]"
+                    debug_log("Audio generation failed, placeholder saved")
+            else:
+                debug_log(f"Audio field not found in note: {CONFIG['explanation_audio_field']}")
+        
+        elif CONFIG.get("disable_audio", False):
+            debug_log("Audio generation is disabled in settings - leaving audio field unchanged")
+            # Don't modify the audio field when audio generation is disabled
+        else:
+            debug_log("Audio generation not needed - leaving audio field unchanged")
+            # Don't modify the audio field when audio override is not requested
+        
+        # Also handle the "explanationAudio" field (with correct spelling) if it exists
+        if should_generate_audio and "explanationAudio" in note and CONFIG["explanation_audio_field"] != "explanationAudio":
+            debug_log("Also updating 'explanationAudio' field (correct spelling)")
+            if audio_path_result[0]:
+                # If the returned value is already an Anki sound tag, use it as-is,
+                # otherwise wrap the filename in one. This prevents double "[sound:" tags
+                if str(audio_path_result[0]).startswith("[sound:") and str(audio_path_result[0]).endswith("]"):
+                    note["explanationAudio"] = audio_path_result[0]
+                else:
+                    audio_filename = os.path.basename(audio_path_result[0])
+                    note["explanationAudio"] = f"[sound:{audio_filename}]"
+                debug_log("Audio reference saved to explanationAudio field (correct spelling)")
+            else:
+                note["explanationAudio"] = "[Audio generation failed]"
+                debug_log("Audio generation failed, setting placeholder in explanationAudio field")
         
         # Save changes - wrap in try/except to catch any issues
         try:
@@ -1117,16 +1316,17 @@ def process_current_card():
         explanation_exists = CONFIG["explanation_field"] in note and note[CONFIG["explanation_field"]].strip()
         audio_exists = CONFIG["explanation_audio_field"] in note and note[CONFIG["explanation_audio_field"]].strip()
         
-        # Ask separate override questions
-        override_text = askUser("Do you want to override the explanation field?", title="AI Language Explainer", defaultno=False)
+        # Show the generation options dialog
+        generation_dialog = BulkGenerationDialog(mw)
+        generation_dialog.setWindowTitle("AI Language Explainer - Generation Options")
+        if generation_dialog.exec() != QDialog.DialogCode.Accepted:
+            debug_log("User canceled generation dialog")
+            progress.cancel()
+            return
         
-        # Only ask about audio if it's not disabled in settings
-        override_audio = False
-        if not CONFIG.get("disable_audio", False):
-            # Ask if user wants to overwrite the audio field
-            override_audio = askUser("Do you want to override the explanation audio field?", title="AI Language Explainer", defaultno=False)
-        else:
-            debug_log("Audio generation disabled in settings, skipping audio override prompt")
+        # Get the override options from the dialog
+        override_text, override_audio = generation_dialog.get_override_options()
+        debug_log(f"Generation options: override_text={override_text}, override_audio={override_audio}")
         
         # Store audio override flag to skip audio generation in backend
         CONFIG["override_audio"] = override_audio
@@ -1496,16 +1696,15 @@ def batch_process_notes():
         showInfo("Please set your OpenAI API key in the AI Language Explainer Settings.")
         return
     
-    # Ask if user wants to overwrite text only
-    override_text = askUser("Do you want to override the explanation field?", title="AI Language Explainer", defaultno=False)
+    # Show the bulk generation options dialog
+    bulk_dialog = BulkGenerationDialog(mw)
+    if bulk_dialog.exec() != QDialog.DialogCode.Accepted:
+        debug_log("User canceled bulk generation dialog")
+        return
     
-    # Only ask about audio if it's not disabled in settings
-    override_audio = False
-    if not CONFIG.get("disable_audio", False):
-        # Ask if user wants to overwrite the voice field
-        override_audio = askUser("Do you want to override the explanation audio field?", title="AI Language Explainer", defaultno=False)
-    else:
-        debug_log("Audio generation disabled in settings, skipping audio override prompt")
+    # Get the override options from the dialog
+    override_text, override_audio = bulk_dialog.get_override_options()
+    debug_log(f"Bulk generation options: override_text={override_text}, override_audio={override_audio}")
     
     # Store audio override flag to skip audio generation in backend
     CONFIG["override_audio"] = override_audio
