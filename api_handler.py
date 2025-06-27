@@ -259,7 +259,7 @@ def generate_audio_openai_tts(api_key, text, voice, speed=1.0):
         with open(file_path, "wb") as f:
             f.write(response.content)
         debug_log(f"Written OpenAI TTS audio file: {file_path}")
-        return file_path
+        return f"[sound:{filename}]"
     except Exception as e:
         debug_log(f"Exception in OpenAI TTS: {e}")
         return None

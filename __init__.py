@@ -83,7 +83,7 @@ def check_dependencies():
 check_dependencies()
 
 # Now import the module that requires these dependencies
-from .api_handler import process_with_openai, generate_audio, check_voicevox_running, check_aivisspeech_running, get_aivisspeech_voices
+from .api_handler import process_with_openai, generate_audio as backend_generate_audio, check_voicevox_running, check_aivisspeech_running, get_aivisspeech_voices
 
 # Global variables to store configuration
 CONFIG = {
@@ -181,42 +181,103 @@ def get_fields_for_note_type(note_type_name):
     
     return [field['name'] for field in model['flds']]
 
-# Bulk Generation Override Dialog
+# Bulk Generation Dialog
 class BulkGenerationDialog(QDialog):
-    def __init__(self, parent=None):
+    """
+    Dialog for selecting generation options using a 4-checkbox system.
+    
+    The 4-checkbox system works as follows:
+    1. "Generate Text" - Always visible, checked by default (unless disabled in settings)
+    2. "Generate Audio" - Always visible, checked by default (unless disabled in settings)  
+    3. "Override Text" - Only shown when selected notes have existing text content
+    4. "Override Audio" - Only shown when selected notes have existing audio content
+    
+    This provides intuitive behavior:
+    - Users see auto-generation options by default
+    - Override options only appear when there's actually content to override
+    - Statistics update dynamically to show what will happen with current selections
+    """
+    def __init__(self, parent=None, selected_notes=None):
         super(BulkGenerationDialog, self).__init__(parent)
-        self.setWindowTitle("AI Language Explainer - Bulk Generation Options")
-        self.setMinimumWidth(400)
+        self.setWindowTitle("AI Language Explainer - Generation Options")
+        self.setMinimumWidth(500)
+        self.selected_notes = selected_notes or []
         self.setup_ui()
         
-        # Initialize result variables
-        self.override_explanation = False
-        self.override_explanation_audio = False
+        # Initialize result variables  
+        self.generate_explanation_text = False
+        self.generate_explanation_audio = False
         
     def setup_ui(self):
         layout = QVBoxLayout()
         self.setLayout(layout)
         
         # Main instruction label
-        instruction_label = QLabel("Select which content to override during bulk generation:")
+        instruction_label = QLabel("Select what content to generate:")
         instruction_label.setWordWrap(True)
+        instruction_label.setStyleSheet("font-weight: bold; margin-bottom: 5px;")
         layout.addWidget(instruction_label)
         
-        # Create checkboxes
-        self.explanation_checkbox = QCheckBox("Override Explanation")
-        self.explanation_audio_checkbox = QCheckBox("Override Explanation Audio")
+        # Explanation text with light color for better visibility
+        explanation_text = QLabel("Content will be auto-generated for empty fields")
+        explanation_text.setStyleSheet("""
+            QLabel {
+                color: #CCCCCC;
+                font-size: 11px;
+                margin-bottom: 10px;
+            }
+        """)
+        explanation_text.setWordWrap(True)
+        layout.addWidget(explanation_text)
         
-        layout.addWidget(self.explanation_checkbox)
-        layout.addWidget(self.explanation_audio_checkbox)
+        # Primary generation checkboxes (always visible, checked by default)
+        self.generate_text_checkbox = QCheckBox("Generate Explanation Text")
+        self.generate_audio_checkbox = QCheckBox("Generate Explanation Audio")
+        
+        layout.addWidget(self.generate_text_checkbox)
+        layout.addWidget(self.generate_audio_checkbox)
+        
+        # Override checkboxes (conditional visibility)
+        self.override_text_checkbox = QCheckBox("Override Explanation Text")
+        self.override_audio_checkbox = QCheckBox("Override Explanation Audio")
+        
+        # Initially hidden - will be shown/hidden based on content analysis
+        self.override_text_checkbox.setVisible(False)
+        self.override_audio_checkbox.setVisible(False)
+        
+        layout.addWidget(self.override_text_checkbox)
+        layout.addWidget(self.override_audio_checkbox)
+        
+        # Connect checkboxes to update statistics
+        qconnect(self.generate_text_checkbox.toggled, self.update_statistics)
+        qconnect(self.generate_audio_checkbox.toggled, self.update_statistics)
+        qconnect(self.override_text_checkbox.toggled, self.update_statistics)
+        qconnect(self.override_audio_checkbox.toggled, self.update_statistics)
+        
+        # Add statistics section with dark mode support
+        self.statistics_label = QLabel("")
+        self.statistics_label.setStyleSheet("""
+            QLabel {
+                background-color: palette(alternatebase);
+                color: palette(text);
+                padding: 10px;
+                border-radius: 5px;
+                margin-top: 10px;
+                border: 1px solid palette(mid);
+            }
+        """)
+        self.statistics_label.setWordWrap(True)
+        layout.addWidget(self.statistics_label)
         
         # Add note about disabled features
         self.note_label = QLabel("")
-        self.note_label.setStyleSheet("color: #666; font-style: italic; margin-top: 10px;")
+        self.note_label.setStyleSheet("color: palette(mid); font-style: italic; margin-top: 10px;")
         self.note_label.setWordWrap(True)
         layout.addWidget(self.note_label)
         
         # Update UI based on current settings
         self.update_checkbox_states()
+        self.update_statistics()
         
         # Buttons
         button_layout = QHBoxLayout()
@@ -231,27 +292,49 @@ class BulkGenerationDialog(QDialog):
         layout.addLayout(button_layout)
     
     def update_checkbox_states(self):
-        """Update checkbox states based on current settings and show appropriate notes"""
+        """Update checkbox states based on current settings, set defaults, and show/hide override options"""
         text_generation_disabled = CONFIG.get("disable_text_generation", False)
         audio_disabled = CONFIG.get("disable_audio", False)
         
         notes = []
         
-        # Handle text generation checkbox
+        # Handle primary text generation checkbox
         if text_generation_disabled:
-            self.explanation_checkbox.setEnabled(False)
-            self.explanation_checkbox.setChecked(False)
+            self.generate_text_checkbox.setEnabled(False)
+            self.generate_text_checkbox.setChecked(False)
             notes.append("Text generation is disabled in settings")
         else:
-            self.explanation_checkbox.setEnabled(True)
+            self.generate_text_checkbox.setEnabled(True)
+            self.generate_text_checkbox.setChecked(True)  # Default checked
         
-        # Handle audio generation checkbox  
+        # Handle primary audio generation checkbox  
         if audio_disabled:
-            self.explanation_audio_checkbox.setEnabled(False)
-            self.explanation_audio_checkbox.setChecked(False)
+            self.generate_audio_checkbox.setEnabled(False)
+            self.generate_audio_checkbox.setChecked(False)
             notes.append("Audio generation is disabled in settings")
         else:
-            self.explanation_audio_checkbox.setEnabled(True)
+            self.generate_audio_checkbox.setEnabled(True)
+            self.generate_audio_checkbox.setChecked(True)  # Default checked
+        
+        # Analyze notes to determine if override checkboxes should be shown
+        if self.selected_notes:
+            stats = self.analyze_selected_notes()
+            
+            # Show/hide override text checkbox based on existing content
+            if stats['existing_text'] > 0 and not text_generation_disabled:
+                self.override_text_checkbox.setVisible(True)
+                self.override_text_checkbox.setText(f"Override Explanation Text ({stats['existing_text']} will be overridden)")
+                self.override_text_checkbox.setChecked(False)  # Default unchecked
+            else:
+                self.override_text_checkbox.setVisible(False)
+                
+            # Show/hide override audio checkbox based on existing content
+            if stats['existing_audio'] > 0 and not audio_disabled:
+                self.override_audio_checkbox.setVisible(True) 
+                self.override_audio_checkbox.setText(f"Override Explanation Audio ({stats['existing_audio']} will be overridden)")
+                self.override_audio_checkbox.setChecked(False)  # Default unchecked
+            else:
+                self.override_audio_checkbox.setVisible(False)
         
         # Show combined notes
         if notes:
@@ -259,12 +342,131 @@ class BulkGenerationDialog(QDialog):
         else:
             self.note_label.setText("")
     
-    def get_override_options(self):
-        """Get the selected override options"""
-        return (
-            self.explanation_checkbox.isChecked() and self.explanation_checkbox.isEnabled(),
-            self.explanation_audio_checkbox.isChecked() and self.explanation_audio_checkbox.isEnabled()
-        )
+    def update_statistics(self):
+        """Update the statistics display based on current selections and note analysis"""
+        if not self.selected_notes:
+            self.statistics_label.setText("No notes provided for analysis.")
+            return
+        
+        # Analyze the selected notes to get statistics
+        stats = self.analyze_selected_notes()
+        
+        # Determine what will happen based on the 4-checkbox system
+        will_generate_text = self.generate_text_checkbox.isChecked() and self.generate_text_checkbox.isEnabled()
+        will_generate_audio = self.generate_audio_checkbox.isChecked() and self.generate_audio_checkbox.isEnabled()
+        will_override_text = self.override_text_checkbox.isChecked() and self.override_text_checkbox.isVisible()
+        will_override_audio = self.override_audio_checkbox.isChecked() and self.override_audio_checkbox.isVisible()
+        
+        # Format the statistics display
+        stats_text = f"<b>Selected Notes Analysis:</b><br>"
+        stats_text += f"• {len(self.selected_notes)} total cards selected<br>"
+        stats_text += f"• {stats['matching_notes']} cards match configured note type ({CONFIG.get('note_type', 'None')})<br>"
+        
+        if stats['matching_notes'] > 0:
+            stats_text += f"• {stats['empty_text']} cards have empty explanation text<br>"
+            stats_text += f"• {stats['existing_text']} cards have existing explanation text<br>"
+            stats_text += f"• {stats['empty_audio']} cards have empty explanation audio<br>"
+            stats_text += f"• {stats['existing_audio']} cards have existing explanation audio<br>"
+            
+            stats_text += "<br><b>With current settings:</b><br>"
+            
+            # Calculate text generation
+            if will_generate_text:
+                text_auto_count = stats['empty_text']
+                text_override_count = stats['existing_text'] if will_override_text else 0
+                text_total = text_auto_count + text_override_count
+                
+                if text_total > 0:
+                    if text_auto_count > 0 and text_override_count > 0:
+                        stats_text += f"• {text_total} cards will get explanation text ({text_auto_count} auto-generated + {text_override_count} overridden)<br>"
+                    elif text_auto_count > 0:
+                        stats_text += f"• {text_auto_count} cards will get explanation text auto-generated<br>"
+                    elif text_override_count > 0:
+                        stats_text += f"• {text_override_count} cards will get explanation text overridden<br>"
+            
+            # Calculate audio generation  
+            if will_generate_audio:
+                audio_auto_count = stats['empty_audio']
+                audio_override_count = stats['existing_audio'] if will_override_audio else 0
+                audio_total = audio_auto_count + audio_override_count
+                
+                if audio_total > 0:
+                    if audio_auto_count > 0 and audio_override_count > 0:
+                        stats_text += f"• {audio_total} cards will get explanation audio ({audio_auto_count} auto-generated + {audio_override_count} overridden)<br>"
+                    elif audio_auto_count > 0:
+                        stats_text += f"• {audio_auto_count} cards will get explanation audio auto-generated<br>"
+                    elif audio_override_count > 0:
+                        stats_text += f"• {audio_override_count} cards will get explanation audio overridden<br>"
+                    
+            # Show when nothing will happen
+            if not will_generate_text and not will_generate_audio:
+                stats_text += "• <i>No generation will occur with current settings</i>"
+            elif (will_generate_text and stats['empty_text'] == 0 and not will_override_text) and \
+                 (will_generate_audio and stats['empty_audio'] == 0 and not will_override_audio):
+                stats_text += "• <i>No generation needed - all fields have content and no overrides selected</i>"
+        
+        self.statistics_label.setText(stats_text)
+    
+    def analyze_selected_notes(self):
+        """Analyze the selected notes to determine current field states"""
+        stats = {
+            'matching_notes': 0,
+            'empty_text': 0,
+            'existing_text': 0,
+            'empty_audio': 0,
+            'existing_audio': 0
+        }
+        
+        target_note_type = CONFIG.get("note_type", "")
+        explanation_field = CONFIG.get("explanation_field", "")
+        audio_field = CONFIG.get("explanation_audio_field", "")
+        
+        for note_id in self.selected_notes:
+            try:
+                note = mw.col.get_note(note_id)
+                
+                # Check if note type matches
+                if note.note_type()["name"] != target_note_type:
+                    continue
+                    
+                stats['matching_notes'] += 1
+                
+                # Check explanation text field
+                if explanation_field in note:
+                    if note[explanation_field].strip():
+                        stats['existing_text'] += 1
+                    else:
+                        stats['empty_text'] += 1
+                
+                # Check explanation audio field  
+                if audio_field in note:
+                    if note[audio_field].strip():
+                        stats['existing_audio'] += 1
+                    else:
+                        stats['empty_audio'] += 1
+                        
+            except Exception as e:
+                debug_log(f"Error analyzing note {note_id}: {str(e)}")
+                continue
+                
+        return stats
+    
+    def get_generation_options(self):
+        """Get the selected generation options - returns (generate_text, generate_audio, override_text, override_audio)"""
+        # Determine the actual checkbox states with detailed logging
+        generate_text = self.generate_text_checkbox.isChecked() and self.generate_text_checkbox.isEnabled()
+        generate_audio = self.generate_audio_checkbox.isChecked() and self.generate_audio_checkbox.isEnabled()
+        override_text = self.override_text_checkbox.isChecked() and self.override_text_checkbox.isVisible()
+        override_audio = self.override_audio_checkbox.isChecked() and self.override_audio_checkbox.isVisible()
+        
+        debug_log(f"=== DIALOG GENERATION OPTIONS ===")
+        debug_log(f"Generate Text checkbox: checked={self.generate_text_checkbox.isChecked()}, enabled={self.generate_text_checkbox.isEnabled()}, result={generate_text}")
+        debug_log(f"Generate Audio checkbox: checked={self.generate_audio_checkbox.isChecked()}, enabled={self.generate_audio_checkbox.isEnabled()}, result={generate_audio}")
+        debug_log(f"Override Text checkbox: checked={self.override_text_checkbox.isChecked()}, visible={self.override_text_checkbox.isVisible()}, result={override_text}")
+        debug_log(f"Override Audio checkbox: checked={self.override_audio_checkbox.isChecked()}, visible={self.override_audio_checkbox.isVisible()}, result={override_audio}")
+        debug_log(f"Final return values: generate_text={generate_text}, generate_audio={generate_audio}, override_text={override_text}, override_audio={override_audio}")
+        
+        return (generate_text, generate_audio, override_text, override_audio)
 
 # Configuration dialog
 class ConfigDialog(QDialog):
@@ -351,7 +553,7 @@ class ConfigDialog(QDialog):
         layout.addWidget(QLabel("<b>Text Generation</b>"))
         
         # Checkbox for disabling text generation
-        self.disable_text_generation_checkbox = QCheckBox("Disable text generation (audio only mode)")
+        self.disable_text_generation_checkbox = QCheckBox("Disable text generation")
         layout.addWidget(self.disable_text_generation_checkbox)
         qconnect(self.disable_text_generation_checkbox.toggled, self.update_text_generation_panels)
         
@@ -551,7 +753,7 @@ class ConfigDialog(QDialog):
         promo_layout.addWidget(QLabel())  # Empty label for spacing
         
         # Promotional message
-        promo_label = QLabel("If you want to learn language learning theory so you can reach native levels, click the button below.")
+        promo_label = QLabel("If you want to learn how to reach native-level fluency as fast as possible, click the button below.")
         promo_label.setWordWrap(True)
         promo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         promo_label.setStyleSheet("font-size: 12px; color: #666; margin: 5px 0px;")
@@ -782,7 +984,7 @@ class ConfigDialog(QDialog):
             if is_running:
                 # Try to generate a very small test audio to confirm full functionality
                 test_text = "テスト"
-                test_result = generate_audio("", test_text)
+                test_result = backend_generate_audio("", test_text)
                 
                 if test_result:
                     # Success! Show confirmation message with path to audio file
@@ -888,7 +1090,7 @@ class ConfigDialog(QDialog):
         debug_log(f"Playing AivisSpeech sample for style_id {style_id} with text: '{sample_text}'")
 
         # 1) Ask the TTS routine to save into collection.media
-        sound_tag = generate_audio(
+        sound_tag = backend_generate_audio(
             api_key=None,
             text=sample_text,
             engine_override="AivisSpeech",
@@ -967,7 +1169,7 @@ class ConfigDialog(QDialog):
         sample_text = "こんにちは。日本へようこそ。"
         debug_log(f"Playing VoiceVox sample for speaker_id {speaker_id} with text: '{sample_text}'")
         # Generate and save into collection.media
-        result = generate_audio(
+        result = backend_generate_audio(
             api_key=None,
             text=sample_text,
             engine_override="VoiceVox",
@@ -1034,7 +1236,32 @@ class ConfigDialog(QDialog):
             QMessageBox.warning(self, "Error", f"Could not open the webpage. Please visit:\nhttps://www.skool.com/mattvsjapan/about?ref=837f80b041cf40e9a3979cd1561a67b2")
 
 # Process a single note with debug mode
-def process_note_debug(note, override_text, override_audio, progress_callback=None):
+def process_note_debug(note, generate_text, generate_audio, override_text, override_audio, progress_callback=None):
+    """
+    Process a note to generate text explanations and/or audio based on user preferences.
+    
+    This function implements a 4-checkbox system:
+    1. generate_text: Whether user wants to generate explanation text
+    2. generate_audio: Whether user wants to generate explanation audio  
+    3. override_text: Whether to override existing explanation text (only shown if content exists)
+    4. override_audio: Whether to override existing explanation audio (only shown if content exists)
+    
+    Logic Flow:
+    - Text is generated if: user wants it AND (field is empty OR override requested) AND feature not disabled
+    - Audio is generated if: user wants it AND (field is empty OR override requested) AND feature not disabled
+    - If nothing needs generation, the function exits early with appropriate reasoning
+    
+    Args:
+        note: The Anki note to process
+        generate_text: Boolean - whether to generate explanation text
+        generate_audio: Boolean - whether to generate explanation audio
+        override_text: Boolean - whether to override existing explanation text
+        override_audio: Boolean - whether to override existing explanation audio  
+        progress_callback: Optional function to call with progress updates
+        
+    Returns:
+        tuple: (success: bool, message: str) indicating result and details
+    """
     addon_dir = os.path.dirname(os.path.abspath(__file__))
     debug_log_path = os.path.join(addon_dir, "process_debug.txt")
     
@@ -1059,43 +1286,97 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
         text_generation_disabled = CONFIG.get("disable_text_generation", False)
         debug_log(f"Text generation disabled: {text_generation_disabled}")
         
-        # Determine what actually needs to be generated based on overrides and settings
-        should_generate_text = override_text and not text_generation_disabled
-        should_generate_audio = override_audio and not CONFIG.get("disable_audio", False)
+        # === STEP 1: Check current field states ===
+        # Check what content currently exists in the target fields
+        explanation_exists = CONFIG["explanation_field"] in note and note[CONFIG["explanation_field"]].strip()
+        audio_exists = CONFIG["explanation_audio_field"] in note and note[CONFIG["explanation_audio_field"]].strip()
         
-        debug_log(f"Should generate text: {should_generate_text}")
-        debug_log(f"Should generate audio: {should_generate_audio}")
+        debug_log(f"=== FIELD STATE ANALYSIS ===")
+        debug_log(f"Explanation field '{CONFIG['explanation_field']}' exists: {explanation_exists}")
+        debug_log(f"Audio field '{CONFIG['explanation_audio_field']}' exists: {audio_exists}")
         
-        # Skip only if neither text nor audio generation is needed and content already exists
+        # === STEP 2: Log user's checkbox selections ===
+        debug_log(f"=== USER CHECKBOX SELECTIONS ===")
+        debug_log(f"Generate Text checkbox: {generate_text}")
+        debug_log(f"Generate Audio checkbox: {generate_audio}")  
+        debug_log(f"Override Text checkbox: {override_text}")
+        debug_log(f"Override Audio checkbox: {override_audio}")
+        
+        # === STEP 3: Check system settings ===
+        debug_log(f"=== SYSTEM SETTINGS ===")
+        debug_log(f"Text generation disabled: {text_generation_disabled}")
+        debug_log(f"Audio generation disabled: {CONFIG.get('disable_audio', False)}")
+        
+        # === STEP 4: Determine what should be generated ===
+        # 
+        # Core Logic for Generation Decision:
+        # For each content type (text/audio), we generate if ALL three conditions are met:
+        # 1. User wants generation (checkbox checked)
+        # 2. Content is needed (field is empty OR user explicitly wants to override existing content)
+        # 3. Feature is allowed (not disabled in settings)
+        #
+        # This ensures that:
+        # - Empty fields get auto-generated when user requests generation
+        # - Existing content is preserved unless user explicitly chooses to override
+        # - Disabled features are respected regardless of user choices
+        debug_log(f"=== GENERATION DECISION LOGIC ===")
+        
+        # Text decision breakdown
+        text_user_wants = generate_text  # Did user check "Generate Text"?
+        text_needed = not explanation_exists or override_text  # Is text needed? (empty OR override requested)
+        text_allowed = not text_generation_disabled  # Is text generation enabled in settings?
+        should_generate_text = text_user_wants and text_needed and text_allowed
+        
+        debug_log(f"TEXT DECISION:")
+        debug_log(f"  User wants text generation: {text_user_wants}")
+        debug_log(f"  Text needed (empty field OR override requested): {text_needed}")
+        debug_log(f"    - Field is empty: {not explanation_exists}")
+        debug_log(f"    - Override requested: {override_text}")
+        debug_log(f"  Text generation allowed (not disabled): {text_allowed}")
+        debug_log(f"  FINAL TEXT DECISION: {should_generate_text}")
+        
+        # Audio decision breakdown  
+        audio_user_wants = generate_audio  # Did user check "Generate Audio"?
+        audio_needed = not audio_exists or override_audio  # Is audio needed? (empty OR override requested)
+        audio_allowed = not CONFIG.get("disable_audio", False)  # Is audio generation enabled in settings?
+        should_generate_audio = audio_user_wants and audio_needed and audio_allowed
+        
+        debug_log(f"AUDIO DECISION:")
+        debug_log(f"  User wants audio generation: {audio_user_wants}")
+        debug_log(f"  Audio needed (empty field OR override requested): {audio_needed}")
+        debug_log(f"    - Field is empty: {not audio_exists}")
+        debug_log(f"    - Override requested: {override_audio}")
+        debug_log(f"  Audio generation allowed (not disabled): {audio_allowed}")
+        debug_log(f"  FINAL AUDIO DECISION: {should_generate_audio}")
+        
+        # === STEP 5: Early exit check ===
+        debug_log(f"=== EARLY EXIT CHECK ===")
         if not should_generate_text and not should_generate_audio:
-            debug_log("Checking if content already exists")
-            explanation_exists = CONFIG["explanation_field"] in note and note[CONFIG["explanation_field"]].strip()
-            # Check if audio field exists in the note before checking its content
-            audio_exists = CONFIG["explanation_audio_field"] in note and note[CONFIG["explanation_audio_field"]].strip()
+            debug_log("EARLY EXIT: Nothing to generate")
+            debug_log(f"Reason: should_generate_text={should_generate_text}, should_generate_audio={should_generate_audio}")
             
-            debug_log(f"explanation exists: {explanation_exists}")
-            debug_log(f"Audio exists: {audio_exists}")
-            
-            # If only checking for existing content, use appropriate logic
-            if text_generation_disabled and not CONFIG.get("disable_audio", False):
-                # Text generation disabled but audio enabled: only check if audio exists
-                if audio_exists:
-                    debug_log("Audio exists and only audio generation enabled, skipping")
-                    return True, "Content already exists"
-            elif CONFIG.get("disable_audio", False) and not text_generation_disabled:
-                # Audio disabled but text enabled: only check if explanation exists  
-                if explanation_exists:
-                    debug_log("Explanation exists and only text generation enabled, skipping")
-                    return True, "Content already exists"
-            elif not text_generation_disabled and not CONFIG.get("disable_audio", False):
-                # Both enabled: check if both exist
-                if explanation_exists and audio_exists:
-                    debug_log("Both fields have content, skipping")
-                    return True, "Content already exists"
+            # Provide more specific feedback about why nothing was generated
+            reasons = []
+            if not text_user_wants and not audio_user_wants:
+                reasons.append("no generation requested")
+            elif text_generation_disabled and CONFIG.get("disable_audio", False):
+                reasons.append("both text and audio generation disabled in settings")
+            elif explanation_exists and not override_text and audio_exists and not override_audio:
+                reasons.append("content already exists and no override requested")
+            elif explanation_exists and not override_text:
+                reasons.append("text content already exists and text override not requested")
+            elif audio_exists and not override_audio:
+                reasons.append("audio content already exists and audio override not requested")
             else:
-                # Both disabled: nothing to do
-                debug_log("Both text and audio generation disabled, skipping")
-                return True, "Nothing to generate"
+                reasons.append("generation conditions not met")
+            
+            reason_text = ", ".join(reasons)
+            debug_log(f"Early exit reason: {reason_text}")
+            return True, f"Skipped: {reason_text}"
+        
+        debug_log(f"PROCEEDING: At least one type of generation is needed")
+        debug_log(f"Will generate text: {should_generate_text}")
+        debug_log(f"Will generate audio: {should_generate_audio}")
         
         # Process with OpenAI (only if text generation is needed)
         explanation = None
@@ -1115,7 +1396,7 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
             
             debug_log("Calling process_with_openai")
             try:
-                if progress_callback:
+                if progress_callback and callable(progress_callback):
                     progress_callback("Sending request to OpenAI...")
                     
                 explanation = process_with_openai(CONFIG["openai_key"], prompt, CONFIG["openai_model"])
@@ -1124,7 +1405,7 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
                     return False, "Failed to generate explanation from OpenAI"
                 debug_log(f"Received explanation: {explanation[:50]}...")
                 
-                if progress_callback:
+                if progress_callback and callable(progress_callback):
                     progress_callback("Received explanation from OpenAI")
             except Exception as e:
                 debug_log(f"Error in process_with_openai: {str(e)}")
@@ -1140,7 +1421,7 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
                 explanation = word if word else "テスト"
                 debug_log(f"No existing explanation, using word for audio: {explanation}")
             
-            if progress_callback:
+            if progress_callback and callable(progress_callback):
                 progress_callback("Using existing content for audio generation")
         
         # Save explanation to note (only if text generation was performed and we have new content)
@@ -1150,7 +1431,7 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
                 note[CONFIG["explanation_field"]] = explanation
                 debug_log("Newly generated explanation saved to note")
                 
-                if progress_callback:
+                if progress_callback and callable(progress_callback):
                     progress_callback("Explanation saved to note")
             except Exception as e:
                 debug_log(f"Error setting explanation field: {CONFIG['explanation_field']}: {str(e)}")
@@ -1180,14 +1461,21 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
                 debug_log(f"Audio field found: {CONFIG['explanation_audio_field']}")
                 try:
                     # Update progress callback
-                    if progress_callback:
+                    if progress_callback and callable(progress_callback):
                         progress_callback(f"Generating audio with {CONFIG['tts_engine']}...")
                     # Generate audio using the explanation text (existing or newly generated)
                     debug_log(f"Calling generate_audio with engine: {CONFIG['tts_engine']}")
+                    debug_log(f"Audio generation parameters: api_key_length={len(CONFIG.get('openai_key', ''))}, explanation_length={len(explanation)}")
+                    
+                    # Prepare parameters for audio generation with detailed logging
+                    api_key = CONFIG.get("openai_key", "")
                     aivis_style_id = CONFIG.get("aivisspeech_style_id") if CONFIG['tts_engine'] == 'AivisSpeech' else None
                     voicevox_speaker_id = CONFIG.get("voicevox_default_speaker_id") if CONFIG['tts_engine'] == 'VoiceVox' else None
-                    audio_path = generate_audio(
-                        CONFIG.get("openai_key", ""),
+                    
+                    debug_log(f"Calling generate_audio with: api_key='{api_key[:10] if api_key else 'None'}...', text_length={len(explanation)}, aivis_style_id={aivis_style_id}, voicevox_speaker_id={voicevox_speaker_id}")
+                    
+                    audio_path = backend_generate_audio(
+                        api_key,
                         explanation,
                         style_id_override=aivis_style_id,
                         speaker_id_override=voicevox_speaker_id
@@ -1242,13 +1530,13 @@ def process_note_debug(note, override_text, override_audio, progress_callback=No
         try:
             debug_log("Calling note.flush() to save changes")
             
-            if progress_callback:
+            if progress_callback and callable(progress_callback):
                 progress_callback("Saving changes to note...")
                 
             note.flush()
             debug_log("Note.flush() completed successfully")
             
-            if progress_callback:
+            if progress_callback and callable(progress_callback):
                 progress_callback("Changes saved successfully")
         except Exception as e:
             debug_log(f"Error in note.flush(): {str(e)}")
@@ -1316,19 +1604,22 @@ def process_current_card():
         explanation_exists = CONFIG["explanation_field"] in note and note[CONFIG["explanation_field"]].strip()
         audio_exists = CONFIG["explanation_audio_field"] in note and note[CONFIG["explanation_audio_field"]].strip()
         
-        # Show the generation options dialog
-        generation_dialog = BulkGenerationDialog(mw)
+        # Show the generation options dialog  
+        generation_dialog = BulkGenerationDialog(mw, [note.id])
         generation_dialog.setWindowTitle("AI Language Explainer - Generation Options")
         if generation_dialog.exec() != QDialog.DialogCode.Accepted:
             debug_log("User canceled generation dialog")
             progress.cancel()
             return
         
-        # Get the override options from the dialog
-        override_text, override_audio = generation_dialog.get_override_options()
-        debug_log(f"Generation options: override_text={override_text}, override_audio={override_audio}")
+        # Get the generation options from the dialog (4 values: generate_text, generate_audio, override_text, override_audio)
+        generate_text, generate_audio, override_text, override_audio = generation_dialog.get_generation_options()
+        debug_log(f"Generation options: generate_text={generate_text}, generate_audio={generate_audio}, override_text={override_text}, override_audio={override_audio}")
         
-        # Store audio override flag to skip audio generation in backend
+        # Store generation flags for backend processing
+        CONFIG["generate_text"] = generate_text
+        CONFIG["generate_audio"] = generate_audio
+        CONFIG["override_text"] = override_text
         CONFIG["override_audio"] = override_audio
         
         # Proceed directly to voicevox status check
@@ -1415,7 +1706,9 @@ def process_current_card():
                         debug_log(f"Progress update: {message}, value: {progress_value}")
                     
                     # Force UI update on main thread
-                    mw.taskman.run_on_main(lambda: update_progress_ui(message, progress_value))
+                    def update_ui():
+                        update_progress_ui(message, progress_value)
+                    mw.taskman.run_on_main(update_ui)
                 
                 def update_progress_ui(message, value):
                     try:
@@ -1432,7 +1725,7 @@ def process_current_card():
                 
                 # Call process_note with the progress callback
                 debug_log("Starting process_note with progress callback")
-                result, message = process_note(note, override_text, override_audio, update_progress)
+                result, message = process_note(note, generate_text, generate_audio, override_text, override_audio, update_progress)
                 debug_log(f"process_note completed with result: {result}, message: {message}")
                 
                 # Mark processing as completed to stop the timeout checker
@@ -1696,17 +1989,20 @@ def batch_process_notes():
         showInfo("Please set your OpenAI API key in the AI Language Explainer Settings.")
         return
     
-    # Show the bulk generation options dialog
-    bulk_dialog = BulkGenerationDialog(mw)
+    # Show the bulk generation options dialog with selected notes for analysis
+    bulk_dialog = BulkGenerationDialog(mw, selected_notes)
     if bulk_dialog.exec() != QDialog.DialogCode.Accepted:
         debug_log("User canceled bulk generation dialog")
         return
     
-    # Get the override options from the dialog
-    override_text, override_audio = bulk_dialog.get_override_options()
-    debug_log(f"Bulk generation options: override_text={override_text}, override_audio={override_audio}")
+    # Get the generation options from the dialog (4 values: generate_text, generate_audio, override_text, override_audio)
+    generate_text, generate_audio, override_text, override_audio = bulk_dialog.get_generation_options()
+    debug_log(f"Bulk generation options: generate_text={generate_text}, generate_audio={generate_audio}, override_text={override_text}, override_audio={override_audio}")
     
-    # Store audio override flag to skip audio generation in backend
+    # Store generation flags for backend processing
+    CONFIG["generate_text"] = generate_text
+    CONFIG["generate_audio"] = generate_audio
+    CONFIG["override_text"] = override_text
     CONFIG["override_audio"] = override_audio
     
     # Create a progress dialog with fixed width to avoid the resizing issue
@@ -1762,17 +2058,21 @@ def batch_process_notes():
                     missing_fields_count += 1
                     continue
                 
-                # Process the note with separate override flags
-                success, message = process_note_debug(note, override_text, override_audio)
+                # Process the note with separate generation flags
+                success, message = process_note_debug(note, generate_text, generate_audio, override_text, override_audio, progress_callback=None)
                 if success:
-                    if message == "Content already exists":
+                    # Check for different skip messages that were updated
+                    if "already exists" in message or "not requested" in message:
                         skipped_count += 1
+                        debug_log(f"Note {note_id} skipped: {message}")
                     else:
                         success_count += 1
+                        debug_log(f"Note {note_id} processed successfully: {message}")
                         # Save changes to the database
                         note.flush()
                 else:
                     error_count += 1
+                    debug_log(f"Note {note_id} failed: {message}")
             
             # Final update on main thread
             mw.taskman.run_on_main(lambda: progress.setValue(len(selected_notes) + 1))
