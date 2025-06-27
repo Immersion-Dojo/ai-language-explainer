@@ -4,10 +4,9 @@ If you're experiencing crashes with the addon, follow these steps to collect deb
 
 ## 1. Reproduce the Crash
 
-1. Make sure you're using version 1.3.1 or later of the addon
-2. Try to reproduce the crash by:
-   - Selecting a card in the browser and generating an explanation, or
-   - Clicking the "Generate GPT Explainer" button during review
+Try to reproduce the crash by:
+- Selecting a card in the browser and generating an explanation, or
+- Clicking the "Generate GPT Explainer" button during review
 
 ## 2. Collect Debug Logs
 
@@ -20,14 +19,14 @@ After Anki crashes, several debug log files will be created in the addon directo
 
 1. Open Anki
 2. Go to Tools > Add-ons
-3. Select "GPT Language Explainer"
+3. Select "AI Language Explainer" or "375742312"
 4. Click "View Files"
 
 This will open the addon directory where the log files are stored.
 
 ## 4. Share the Debug Logs
 
-1. Compress (zip) all the log files
+1. Compress (zip) all the log files (specifically, debug_log.txt and crash_log.txt)
 2. Share them with the developer along with:
    - A description of what you were doing when the crash occurred
    - Your Anki version
