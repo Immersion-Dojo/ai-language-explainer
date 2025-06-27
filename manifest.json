@@ -1,10 +1,8 @@
 {
     "name": "AI Language Explainer",
-    "package": "ai-language-explainer",
-    "ankiweb_id": "",
-    "author": "ramjad",
+    "homepage": "https://github.com/Immersion-Dojo/ai-language-explainer/",
+    "package": "375742312",
     "version": "1.5.0",
-    "homepage": "",
     "conflicts": [],
-    "mod": 0
+    "mod": 1750990221
 }
