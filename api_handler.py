@@ -368,7 +368,7 @@ def generate_audio_aivisspeech(text, style_id=None, base_url="http://127.0.0.1:1
 
         if save_to_collection:
             timestamp = int(time.time())
-            filename = f"gpt_explainer_aivis_{style_id}_{timestamp}.wav"
+            filename = f"aivis_speech_{style_id}_{timestamp}.wav"
             media_dir = os.path.join(mw.pm.profileFolder(), "collection.media")
             if not os.path.exists(media_dir):
                 os.makedirs(media_dir)
