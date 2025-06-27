@@ -526,6 +526,13 @@ class ConfigDialog(QDialog):
         model_recommendation.setWordWrap(True)
         text_gen_layout.addWidget(model_recommendation)
         text_gen_layout.addWidget(QLabel("Prompt:"))
+        
+        # Add reminder text above prompt box
+        prompt_reminder = QLabel("Remember that {sentence}, {word}, and {definition} should all be in lowercase. It's case sensitive. There should be no other {x} in your prompt.")
+        prompt_reminder.setStyleSheet("font-size: 11px; color: #666; font-style: italic; margin-top: 2px;")
+        prompt_reminder.setWordWrap(True)
+        text_gen_layout.addWidget(prompt_reminder)
+        
         self.gpt_prompt_input = QTextEdit()
         self.gpt_prompt_input.setFixedHeight(150) # Increased height
         text_gen_layout.addWidget(self.gpt_prompt_input)
