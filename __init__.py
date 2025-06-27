@@ -184,18 +184,13 @@ def get_fields_for_note_type(note_type_name):
 # Bulk Generation Dialog
 class BulkGenerationDialog(QDialog):
     """
-    Dialog for selecting generation options using a 4-checkbox system.
+    Dialog for selecting generation options.
     
-    The 4-checkbox system works as follows:
-    1. "Generate Text" - Always visible, checked by default (unless disabled in settings)
-    2. "Generate Audio" - Always visible, checked by default (unless disabled in settings)  
-    3. "Override Text" - Only shown when selected notes have existing text content
-    4. "Override Audio" - Only shown when selected notes have existing audio content
-    
-    This provides intuitive behavior:
-    - Users see auto-generation options by default
-    - Override options only appear when there's actually content to override
-    - Statistics update dynamically to show what will happen with current selections
+    The dialog allows you to select which content to generate for all selected cards.
+    - "Generate Text" and "Generate Audio" checkboxes control which content will be generated.
+    - When checked, all selected cards will be overridden for that content type.
+    - If you do not want a card to be overridden, deselect it in the browser before proceeding.
+    Statistics update dynamically to show what will happen with current selections.
     """
     def __init__(self, parent=None, selected_notes=None):
         super(BulkGenerationDialog, self).__init__(parent)
@@ -211,49 +206,39 @@ class BulkGenerationDialog(QDialog):
     def setup_ui(self):
         layout = QVBoxLayout()
         self.setLayout(layout)
-        
+
         # Main instruction label
         instruction_label = QLabel("Select what content to generate:")
         instruction_label.setWordWrap(True)
         instruction_label.setStyleSheet("font-weight: bold; margin-bottom: 5px;")
         layout.addWidget(instruction_label)
-        
+
         # Explanation text with light color for better visibility
-        explanation_text = QLabel("Content will be auto-generated for empty fields")
+        explanation_text = QLabel(
+            "When generation is checked, <b>all</b> selected cards will be overridden for that content type.<br>"
+            "Deselect any cards in the browser you do not want to be changed."
+        )
         explanation_text.setStyleSheet("""
             QLabel {
                 color: #CCCCCC;
-                font-size: 11px;
+                font-size: 13px;
                 margin-bottom: 10px;
             }
         """)
         explanation_text.setWordWrap(True)
         layout.addWidget(explanation_text)
-        
+
         # Primary generation checkboxes (always visible, checked by default)
         self.generate_text_checkbox = QCheckBox("Generate Explanation Text")
         self.generate_audio_checkbox = QCheckBox("Generate Explanation Audio")
-        
+
         layout.addWidget(self.generate_text_checkbox)
         layout.addWidget(self.generate_audio_checkbox)
-        
-        # Override checkboxes (conditional visibility)
-        self.override_text_checkbox = QCheckBox("Override Explanation Text")
-        self.override_audio_checkbox = QCheckBox("Override Explanation Audio")
-        
-        # Initially hidden - will be shown/hidden based on content analysis
-        self.override_text_checkbox.setVisible(False)
-        self.override_audio_checkbox.setVisible(False)
-        
-        layout.addWidget(self.override_text_checkbox)
-        layout.addWidget(self.override_audio_checkbox)
-        
+
         # Connect checkboxes to update statistics
         qconnect(self.generate_text_checkbox.toggled, self.update_statistics)
         qconnect(self.generate_audio_checkbox.toggled, self.update_statistics)
-        qconnect(self.override_text_checkbox.toggled, self.update_statistics)
-        qconnect(self.override_audio_checkbox.toggled, self.update_statistics)
-        
+
         # Add statistics section with dark mode support
         self.statistics_label = QLabel("")
         self.statistics_label.setStyleSheet("""
@@ -268,36 +253,39 @@ class BulkGenerationDialog(QDialog):
         """)
         self.statistics_label.setWordWrap(True)
         layout.addWidget(self.statistics_label)
-        
+
         # Add note about disabled features
         self.note_label = QLabel("")
         self.note_label.setStyleSheet("color: palette(mid); font-style: italic; margin-top: 10px;")
         self.note_label.setWordWrap(True)
         layout.addWidget(self.note_label)
-        
+
         # Update UI based on current settings
         self.update_checkbox_states()
         self.update_statistics()
-        
+
         # Buttons
         button_layout = QHBoxLayout()
         self.ok_button = QPushButton("OK")
         self.cancel_button = QPushButton("Cancel")
-        
+
         qconnect(self.ok_button.clicked, self.accept)
         qconnect(self.cancel_button.clicked, self.reject)
-        
+
         button_layout.addWidget(self.ok_button)
         button_layout.addWidget(self.cancel_button)
         layout.addLayout(button_layout)
     
     def update_checkbox_states(self):
-        """Update checkbox states based on current settings, set defaults, and show/hide override options"""
+        """Update checkbox states based on current settings and set defaults"""
         text_generation_disabled = CONFIG.get("disable_text_generation", False)
         audio_disabled = CONFIG.get("disable_audio", False)
-        
+
+        # Analyze notes to determine counts for empty fields
+        stats = self.analyze_selected_notes() if self.selected_notes else {'empty_text': 0, 'existing_text': 0, 'empty_audio': 0, 'existing_audio': 0}
+
         notes = []
-        
+
         # Handle primary text generation checkbox
         if text_generation_disabled:
             self.generate_text_checkbox.setEnabled(False)
@@ -305,8 +293,8 @@ class BulkGenerationDialog(QDialog):
             notes.append("Text generation is disabled in settings")
         else:
             self.generate_text_checkbox.setEnabled(True)
-            self.generate_text_checkbox.setChecked(True)  # Default checked
-        
+            self.generate_text_checkbox.setChecked(True)
+
         # Handle primary audio generation checkbox  
         if audio_disabled:
             self.generate_audio_checkbox.setEnabled(False)
@@ -314,28 +302,8 @@ class BulkGenerationDialog(QDialog):
             notes.append("Audio generation is disabled in settings")
         else:
             self.generate_audio_checkbox.setEnabled(True)
-            self.generate_audio_checkbox.setChecked(True)  # Default checked
-        
-        # Analyze notes to determine if override checkboxes should be shown
-        if self.selected_notes:
-            stats = self.analyze_selected_notes()
-            
-            # Show/hide override text checkbox based on existing content
-            if stats['existing_text'] > 0 and not text_generation_disabled:
-                self.override_text_checkbox.setVisible(True)
-                self.override_text_checkbox.setText(f"Override Explanation Text ({stats['existing_text']} will be overridden)")
-                self.override_text_checkbox.setChecked(False)  # Default unchecked
-            else:
-                self.override_text_checkbox.setVisible(False)
-                
-            # Show/hide override audio checkbox based on existing content
-            if stats['existing_audio'] > 0 and not audio_disabled:
-                self.override_audio_checkbox.setVisible(True) 
-                self.override_audio_checkbox.setText(f"Override Explanation Audio ({stats['existing_audio']} will be overridden)")
-                self.override_audio_checkbox.setChecked(False)  # Default unchecked
-            else:
-                self.override_audio_checkbox.setVisible(False)
-        
+            self.generate_audio_checkbox.setChecked(True)
+
         # Show combined notes
         if notes:
             self.note_label.setText("Note: " + ", ".join(notes) + ".")
@@ -347,64 +315,33 @@ class BulkGenerationDialog(QDialog):
         if not self.selected_notes:
             self.statistics_label.setText("No notes provided for analysis.")
             return
-        
+
         # Analyze the selected notes to get statistics
         stats = self.analyze_selected_notes()
-        
-        # Determine what will happen based on the 4-checkbox system
+
+        # Determine what will happen based on the checkboxes
         will_generate_text = self.generate_text_checkbox.isChecked() and self.generate_text_checkbox.isEnabled()
         will_generate_audio = self.generate_audio_checkbox.isChecked() and self.generate_audio_checkbox.isEnabled()
-        will_override_text = self.override_text_checkbox.isChecked() and self.override_text_checkbox.isVisible()
-        will_override_audio = self.override_audio_checkbox.isChecked() and self.override_audio_checkbox.isVisible()
-        
+
         # Format the statistics display
         stats_text = f"<b>Selected Notes Analysis:</b><br>"
         stats_text += f"• {len(self.selected_notes)} total cards selected<br>"
         stats_text += f"• {stats['matching_notes']} cards match configured note type ({CONFIG.get('note_type', 'None')})<br>"
-        
+
         if stats['matching_notes'] > 0:
             stats_text += f"• {stats['empty_text']} cards have empty explanation text<br>"
             stats_text += f"• {stats['existing_text']} cards have existing explanation text<br>"
             stats_text += f"• {stats['empty_audio']} cards have empty explanation audio<br>"
             stats_text += f"• {stats['existing_audio']} cards have existing explanation audio<br>"
-            
+
             stats_text += "<br><b>With current settings:</b><br>"
-            
-            # Calculate text generation
             if will_generate_text:
-                text_auto_count = stats['empty_text']
-                text_override_count = stats['existing_text'] if will_override_text else 0
-                text_total = text_auto_count + text_override_count
-                
-                if text_total > 0:
-                    if text_auto_count > 0 and text_override_count > 0:
-                        stats_text += f"• {text_total} cards will get explanation text ({text_auto_count} auto-generated + {text_override_count} overridden)<br>"
-                    elif text_auto_count > 0:
-                        stats_text += f"• {text_auto_count} cards will get explanation text auto-generated<br>"
-                    elif text_override_count > 0:
-                        stats_text += f"• {text_override_count} cards will get explanation text overridden<br>"
-            
-            # Calculate audio generation  
+                stats_text += f"• <b>All</b> selected cards will have explanation text <b>overridden</b><br>"
             if will_generate_audio:
-                audio_auto_count = stats['empty_audio']
-                audio_override_count = stats['existing_audio'] if will_override_audio else 0
-                audio_total = audio_auto_count + audio_override_count
-                
-                if audio_total > 0:
-                    if audio_auto_count > 0 and audio_override_count > 0:
-                        stats_text += f"• {audio_total} cards will get explanation audio ({audio_auto_count} auto-generated + {audio_override_count} overridden)<br>"
-                    elif audio_auto_count > 0:
-                        stats_text += f"• {audio_auto_count} cards will get explanation audio auto-generated<br>"
-                    elif audio_override_count > 0:
-                        stats_text += f"• {audio_override_count} cards will get explanation audio overridden<br>"
-                    
-            # Show when nothing will happen
+                stats_text += f"• <b>All</b> selected cards will have explanation audio <b>overridden</b><br>"
             if not will_generate_text and not will_generate_audio:
                 stats_text += "• <i>No generation will occur with current settings</i>"
-            elif (will_generate_text and stats['empty_text'] == 0 and not will_override_text) and \
-                 (will_generate_audio and stats['empty_audio'] == 0 and not will_override_audio):
-                stats_text += "• <i>No generation needed - all fields have content and no overrides selected</i>"
-        
+
         self.statistics_label.setText(stats_text)
     
     def analyze_selected_notes(self):
@@ -453,19 +390,13 @@ class BulkGenerationDialog(QDialog):
     
     def get_generation_options(self):
         """Get the selected generation options - returns (generate_text, generate_audio, override_text, override_audio)"""
-        # Determine the actual checkbox states with detailed logging
         generate_text = self.generate_text_checkbox.isChecked() and self.generate_text_checkbox.isEnabled()
+        override_text = generate_text  # always override if generate is checked
         generate_audio = self.generate_audio_checkbox.isChecked() and self.generate_audio_checkbox.isEnabled()
-        override_text = self.override_text_checkbox.isChecked() and self.override_text_checkbox.isVisible()
-        override_audio = self.override_audio_checkbox.isChecked() and self.override_audio_checkbox.isVisible()
-        
+        override_audio = generate_audio
         debug_log(f"=== DIALOG GENERATION OPTIONS ===")
-        debug_log(f"Generate Text checkbox: checked={self.generate_text_checkbox.isChecked()}, enabled={self.generate_text_checkbox.isEnabled()}, result={generate_text}")
-        debug_log(f"Generate Audio checkbox: checked={self.generate_audio_checkbox.isChecked()}, enabled={self.generate_audio_checkbox.isEnabled()}, result={generate_audio}")
-        debug_log(f"Override Text checkbox: checked={self.override_text_checkbox.isChecked()}, visible={self.override_text_checkbox.isVisible()}, result={override_text}")
-        debug_log(f"Override Audio checkbox: checked={self.override_audio_checkbox.isChecked()}, visible={self.override_audio_checkbox.isVisible()}, result={override_audio}")
-        debug_log(f"Final return values: generate_text={generate_text}, generate_audio={generate_audio}, override_text={override_text}, override_audio={override_audio}")
-        
+        debug_log(f"Generate Text checkbox: {generate_text}, Generate Audio checkbox: {generate_audio}")
+        debug_log(f"Override Text: {override_text}, Override Audio: {override_audio}")
         return (generate_text, generate_audio, override_text, override_audio)
 
 # Configuration dialog
