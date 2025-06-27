@@ -51,7 +51,7 @@ This Anki add-on helps language learners understand vocabulary words in context 
 2. Start VOICEVOX before using the add-on (runs on `http://localhost:50021`)
 3. Test connection and select preferred voice in settings
 
-#### **AivisSpeech** (Free, High-quality)
+#### **AivisSpeech** (Free, Japanese-focused)
 1. Download and install [AivisSpeech Engine](https://aivis.dev/)
 2. Start the engine (runs on `http://127.0.0.1:10101`)
 3. Load voices and select default in the add-on settings
